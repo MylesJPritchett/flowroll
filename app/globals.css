@@ -24,3 +24,13 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+.react-flow__controls button {
+  background-color: #27272a;
+  border-color: #3f3f46;
+  fill: #d4d4d8;
+}
+
+.react-flow__controls button:hover {
+  background-color: #3f3f46;
+}
