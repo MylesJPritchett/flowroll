@@ -15,27 +15,52 @@ import {
   type OnConnect,
   type NodeTypes,
   BackgroundVariant,
+  useReactFlow,
+
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import BJJNode from "./BJJNode";
 import NodeEditor from "./NodeEditor";
+import EdgeEditor from "./EdgeEditor";
 import { loadGraph, saveGraph, type GraphNode, type GraphEdge } from "../actions/graph";
 
 const nodeTypes: NodeTypes = {
   bjj: BJJNode,
 };
 
-const defaultEdgeOptions = {
-  animated: true,
-  style: { stroke: "#6366f1" },
+const edgeStyles: Record<string, Partial<Edge>> = {
+  "leads to": {
+    animated: true,
+    style: { stroke: "#6366f1", strokeWidth: 2 },
+  },
+  "responds by": {
+    animated: true,
+    style: { stroke: "#f59e0b", strokeWidth: 2 },
+  },
+  "threatens": {
+    animated: true,
+    className: "slow-edge",
+    style: { stroke: "#ef4444", strokeWidth: 2 },
+  },
+  "prevents": {
+    animated: true,
+    className: "slow-edge",
+    style: { stroke: "#71717a", strokeWidth: 1.5 },
+  },
 };
+
+const defaultEdgeStyle = edgeStyles["leads to"];
+
+function getEdgeStyle(relationship: string): Partial<Edge> {
+  return edgeStyles[relationship] ?? defaultEdgeStyle;
+}
 
 function toReactFlowNodes(dbNodes: GraphNode[]): Node[] {
   return dbNodes.map((n) => ({
     id: n.id,
     type: "bjj",
     position: { x: n.position_x, y: n.position_y },
-    data: { label: n.label, description: n.description },
+    data: { label: n.label, description: n.description, player: n.metadata?.player ?? "neutral", tags: n.metadata?.tags ?? [] },
   }));
 }
 
@@ -45,17 +70,22 @@ function toReactFlowEdges(dbEdges: GraphEdge[]): Edge[] {
     source: e.source_node_id,
     target: e.target_node_id,
     label: e.relationship,
+    ...getEdgeStyle(e.relationship),
   }));
 }
 
 function toDbNodes(nodes: Node[]): GraphNode[] {
-  return nodes.map((n) => ({
-    id: n.id,
-    label: (n.data as Record<string, string>).label ?? "New Node",
-    description: (n.data as Record<string, string>).description ?? "",
-    position_x: n.position.x,
-    position_y: n.position.y,
-  }));
+  return nodes.map((n) => {
+    const d = n.data as Record<string, string>;
+    return {
+      id: n.id,
+      label: d.label ?? "New Node",
+      description: d.description ?? "",
+      position_x: n.position.x,
+      position_y: n.position.y,
+      metadata: { player: d.player ?? "neutral", tags: (n.data as Record<string, unknown>).tags ?? [] },
+    };
+  });
 }
 
 function toDbEdges(edges: Edge[]): GraphEdge[] {
@@ -68,9 +98,11 @@ function toDbEdges(edges: Edge[]): GraphEdge[] {
 }
 
 function GraphEditorInner() {
+  const { screenToFlowPosition } = useReactFlow();
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
+  const [selectedEdge, setSelectedEdge] = useState<Edge | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -113,9 +145,79 @@ function GraphEditorInner() {
 
   const onConnect: OnConnect = useCallback(
     (params) => {
-      setEdges((eds) => addEdge({ ...params, label: "leads to" }, eds));
+      setEdges((eds) => addEdge({ ...params, label: "leads to", ...getEdgeStyle("leads to") }, eds));
     },
     [setEdges],
+  );
+
+  const [focusTitle, setFocusTitle] = useState(false);
+  const [editorPos, setEditorPos] = useState({ x: 0, y: 0 });
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const clampEditorPos = useCallback((clientX: number, clientY: number) => {
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return { x: 0, y: 0 };
+
+    const editorW = 300;
+    const editorH = 550;
+    const pad = 12;
+
+    let x = clientX - rect.left + 16;
+    let y = clientY - rect.top - 20;
+
+    // If it would overflow right, put it to the left of the click instead
+    if (x + editorW + pad > rect.width) {
+      x = clientX - rect.left - editorW - 16;
+    }
+    // If it would overflow bottom, push it up
+    if (y + editorH + pad > rect.height) {
+      y = rect.height - editorH - pad;
+    }
+
+    return { x: Math.max(pad, x), y: Math.max(pad, y) };
+  }, []);
+
+  const getRelativePos = useCallback((e: React.MouseEvent) => {
+    return clampEditorPos(e.clientX, e.clientY);
+  }, [clampEditorPos]);
+
+  const justCreatedNode = useRef(false);
+
+  const onConnectEnd = useCallback(
+    (event: MouseEvent | TouchEvent, connectionState: { isValid: boolean | null; fromNode: { id: string } | null }) => {
+      // If the connection landed on a valid handle, onConnect handles it
+      if (connectionState.isValid) return;
+      // Need a source node
+      if (!connectionState.fromNode) return;
+
+      const clientX = "changedTouches" in event ? event.changedTouches[0].clientX : event.clientX;
+      const clientY = "changedTouches" in event ? event.changedTouches[0].clientY : event.clientY;
+      const position = screenToFlowPosition({ x: clientX, y: clientY });
+
+      const nodeId = `${Date.now()}`;
+      const edgeId = `e${nodeId}`;
+      const sourceId = connectionState.fromNode.id;
+      const newNode: Node = {
+        id: nodeId,
+        type: "bjj",
+        position,
+        data: { label: "New Node", description: "", player: "neutral", tags: [] },
+      };
+
+      setNodes((nds) => [...nds, newNode]);
+      setEdges((eds) => [
+        ...eds,
+        { id: edgeId, source: sourceId, target: nodeId, label: "leads to", ...getEdgeStyle("leads to") } as Edge,
+      ]);
+
+      // Open editor with title focused — flag to prevent onPaneClick from clearing it
+      justCreatedNode.current = true;
+      setSelectedNode(newNode);
+      setSelectedEdge(null);
+      setFocusTitle(true);
+      setEditorPos(clampEditorPos(clientX, clientY));
+    },
+    [screenToFlowPosition, setNodes, setEdges, clampEditorPos],
   );
 
   const addNode = useCallback(() => {
@@ -127,21 +229,49 @@ function GraphEditorInner() {
         x: Math.random() * 400 + 100,
         y: Math.random() * 400 + 100,
       },
-      data: { label: "New Node", description: "" },
+      data: { label: "New Node", description: "", player: "neutral", tags: [] },
     };
     setNodes((nds) => [...nds, newNode]);
-  }, [setNodes]);
+    setSelectedNode(newNode);
+    setSelectedEdge(null);
+    setFocusTitle(true);
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (rect) {
+      setEditorPos(clampEditorPos(rect.left + rect.width / 2, rect.top + rect.height / 2));
+    }
+  }, [setNodes, clampEditorPos]);
 
-  const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
+  const onNodeClick = useCallback((e: React.MouseEvent, node: Node) => {
     setSelectedNode(node);
-  }, []);
+    setSelectedEdge(null);
+    setFocusTitle(false);
+    setEditorPos(getRelativePos(e));
+  }, [getRelativePos]);
+
+  const onNodeDoubleClick = useCallback((e: React.MouseEvent, node: Node) => {
+    setSelectedNode(node);
+    setSelectedEdge(null);
+    setFocusTitle(true);
+    setEditorPos(getRelativePos(e));
+  }, [getRelativePos]);
+
+  const onEdgeClick = useCallback((e: React.MouseEvent, edge: Edge) => {
+    setSelectedEdge(edge);
+    setSelectedNode(null);
+    setEditorPos(getRelativePos(e));
+  }, [getRelativePos]);
 
   const onPaneClick = useCallback(() => {
+    if (justCreatedNode.current) {
+      justCreatedNode.current = false;
+      return;
+    }
     setSelectedNode(null);
+    setSelectedEdge(null);
   }, []);
 
   const updateNode = useCallback(
-    (id: string, data: { label: string; description: string }) => {
+    (id: string, data: { label: string; description: string; player: string; tags: string[] }) => {
       setNodes((nds) =>
         nds.map((n) =>
           n.id === id ? { ...n, data: { ...n.data, ...data } } : n,
@@ -167,6 +297,27 @@ function GraphEditorInner() {
     [setNodes, setEdges],
   );
 
+  const updateEdge = useCallback(
+    (id: string, relationship: string) => {
+      const style = getEdgeStyle(relationship);
+      setEdges((eds) =>
+        eds.map((e) => (e.id === id ? { ...e, label: relationship, ...style } : e)),
+      );
+      setSelectedEdge((prev) =>
+        prev && prev.id === id ? { ...prev, label: relationship, ...style } : prev,
+      );
+    },
+    [setEdges],
+  );
+
+  const deleteEdge = useCallback(
+    (id: string) => {
+      setEdges((eds) => eds.filter((e) => e.id !== id));
+      setSelectedEdge(null);
+    },
+    [setEdges],
+  );
+
   if (loading) {
     return (
       <div className="absolute inset-0 flex items-center justify-center">
@@ -176,17 +327,19 @@ function GraphEditorInner() {
   }
 
   return (
-    <div className="absolute inset-0">
+    <div ref={containerRef} className="absolute inset-0">
       <ReactFlow
         nodes={nodes}
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
+        onConnectEnd={onConnectEnd}
         onNodeClick={onNodeClick}
+        onNodeDoubleClick={onNodeDoubleClick}
+        onEdgeClick={onEdgeClick}
         onPaneClick={onPaneClick}
         nodeTypes={nodeTypes}
-        defaultEdgeOptions={defaultEdgeOptions}
         fitView
         proOptions={{ hideAttribution: true }}
       >
@@ -214,9 +367,21 @@ function GraphEditorInner() {
       {selectedNode && (
         <NodeEditor
           node={selectedNode}
+          focusTitle={focusTitle}
+          position={editorPos}
           onUpdate={updateNode}
           onDelete={deleteNode}
-          onClose={() => setSelectedNode(null)}
+          onClose={() => { setSelectedNode(null); setFocusTitle(false); }}
+        />
+      )}
+
+      {selectedEdge && (
+        <EdgeEditor
+          edge={selectedEdge}
+          position={editorPos}
+          onUpdate={updateEdge}
+          onDelete={deleteEdge}
+          onClose={() => setSelectedEdge(null)}
         />
       )}
     </div>

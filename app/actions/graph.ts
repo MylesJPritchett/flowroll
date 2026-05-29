@@ -9,6 +9,7 @@ export interface GraphNode {
   description: string;
   position_x: number;
   position_y: number;
+  metadata?: Record<string, unknown>;
 }
 
 export interface GraphEdge {
@@ -31,7 +32,7 @@ export async function loadGraph(): Promise<{
   const [nodesResult, edgesResult] = await Promise.all([
     supabase
       .from("graph_nodes")
-      .select("id, label, description, position_x, position_y")
+      .select("id, label, description, position_x, position_y, metadata")
       .eq("user_id", userId),
     supabase
       .from("graph_edges")
@@ -77,6 +78,7 @@ export async function saveGraph(
         description: n.description,
         position_x: n.position_x,
         position_y: n.position_y,
+        metadata: n.metadata ?? {},
       })),
     );
     if (error) {

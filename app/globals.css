@@ -34,3 +34,20 @@ body {
 .react-flow__controls button:hover {
   background-color: #3f3f46;
 }
+
+.react-flow__edge-textbg {
+  fill: #18181b;
+}
+
+.react-flow__edge-text {
+  fill: #d4d4d8;
+  font-size: 11px;
+}
+
+.react-flow__edge {
+  cursor: pointer;
+}
+
+.react-flow__edge.slow-edge.animated path {
+  animation-duration: 2.5s !important;
+}
