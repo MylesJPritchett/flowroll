@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -19,6 +19,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import BJJNode from "./BJJNode";
 import NodeEditor from "./NodeEditor";
+import { loadGraph, saveGraph, type GraphNode, type GraphEdge } from "../actions/graph";
 
 const nodeTypes: NodeTypes = {
   bjj: BJJNode,
@@ -29,36 +30,86 @@ const defaultEdgeOptions = {
   style: { stroke: "#6366f1" },
 };
 
-const initialNodes: Node[] = [
-  {
-    id: "1",
+function toReactFlowNodes(dbNodes: GraphNode[]): Node[] {
+  return dbNodes.map((n) => ({
+    id: n.id,
     type: "bjj",
-    position: { x: 250, y: 100 },
-    data: { label: "Closed Guard", description: "" },
-  },
-  {
-    id: "2",
-    type: "bjj",
-    position: { x: 500, y: 250 },
-    data: { label: "Armbar", description: "" },
-  },
-  {
-    id: "3",
-    type: "bjj",
-    position: { x: 100, y: 300 },
-    data: { label: "Triangle", description: "" },
-  },
-];
+    position: { x: n.position_x, y: n.position_y },
+    data: { label: n.label, description: n.description },
+  }));
+}
 
-const initialEdges: Edge[] = [
-  { id: "e1-2", source: "1", target: "2", label: "leads to" },
-  { id: "e1-3", source: "1", target: "3", label: "leads to" },
-];
+function toReactFlowEdges(dbEdges: GraphEdge[]): Edge[] {
+  return dbEdges.map((e) => ({
+    id: e.id,
+    source: e.source_node_id,
+    target: e.target_node_id,
+    label: e.relationship,
+  }));
+}
+
+function toDbNodes(nodes: Node[]): GraphNode[] {
+  return nodes.map((n) => ({
+    id: n.id,
+    label: (n.data as Record<string, string>).label ?? "New Node",
+    description: (n.data as Record<string, string>).description ?? "",
+    position_x: n.position.x,
+    position_y: n.position.y,
+  }));
+}
+
+function toDbEdges(edges: Edge[]): GraphEdge[] {
+  return edges.map((e) => ({
+    id: e.id,
+    source_node_id: e.source,
+    target_node_id: e.target,
+    relationship: (e.label as string) ?? "leads to",
+  }));
+}
 
 function GraphEditorInner() {
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const initialized = useRef(false);
+
+  // Load graph on mount
+  useEffect(() => {
+    loadGraph().then((data) => {
+      if (data && data.nodes.length > 0) {
+        setNodes(toReactFlowNodes(data.nodes));
+        setEdges(toReactFlowEdges(data.edges));
+      }
+      setLoading(false);
+      // Mark initialized after a tick so the initial setNodes/setEdges
+      // don't trigger a save
+      setTimeout(() => {
+        initialized.current = true;
+      }, 100);
+    });
+  }, [setNodes, setEdges]);
+
+  // Auto-save with debounce
+  const scheduleSave = useCallback(
+    (currentNodes: Node[], currentEdges: Edge[]) => {
+      if (!initialized.current) return;
+      if (saveTimeout.current) clearTimeout(saveTimeout.current);
+      saveTimeout.current = setTimeout(async () => {
+        setSaving(true);
+        await saveGraph(toDbNodes(currentNodes), toDbEdges(currentEdges));
+        setSaving(false);
+      }, 1500);
+    },
+    [],
+  );
+
+  // Watch for changes and trigger save
+  useEffect(() => {
+    scheduleSave(nodes, edges);
+  }, [nodes, edges, scheduleSave]);
 
   const onConnect: OnConnect = useCallback(
     (params) => {
@@ -81,12 +132,9 @@ function GraphEditorInner() {
     setNodes((nds) => [...nds, newNode]);
   }, [setNodes]);
 
-  const onNodeClick = useCallback(
-    (_: React.MouseEvent, node: Node) => {
-      setSelectedNode(node);
-    },
-    [],
-  );
+  const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
+    setSelectedNode(node);
+  }, []);
 
   const onPaneClick = useCallback(() => {
     setSelectedNode(null);
@@ -95,10 +143,14 @@ function GraphEditorInner() {
   const updateNode = useCallback(
     (id: string, data: { label: string; description: string }) => {
       setNodes((nds) =>
-        nds.map((n) => (n.id === id ? { ...n, data: { ...n.data, ...data } } : n)),
+        nds.map((n) =>
+          n.id === id ? { ...n, data: { ...n.data, ...data } } : n,
+        ),
       );
       setSelectedNode((prev) =>
-        prev && prev.id === id ? { ...prev, data: { ...prev.data, ...data } } : prev,
+        prev && prev.id === id
+          ? { ...prev, data: { ...prev.data, ...data } }
+          : prev,
       );
     },
     [setNodes],
@@ -107,11 +159,21 @@ function GraphEditorInner() {
   const deleteNode = useCallback(
     (id: string) => {
       setNodes((nds) => nds.filter((n) => n.id !== id));
-      setEdges((eds) => eds.filter((e) => e.source !== id && e.target !== id));
+      setEdges((eds) =>
+        eds.filter((e) => e.source !== id && e.target !== id),
+      );
       setSelectedNode(null);
     },
     [setNodes, setEdges],
   );
+
+  if (loading) {
+    return (
+      <div className="absolute inset-0 flex items-center justify-center">
+        <p className="text-sm text-zinc-500">Loading graph...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="absolute inset-0">
@@ -142,6 +204,12 @@ function GraphEditorInner() {
       >
         + Add Node
       </button>
+
+      {saving && (
+        <div className="absolute bottom-4 left-4 z-10 rounded bg-zinc-800 px-3 py-1.5 text-xs text-zinc-300">
+          Saving...
+        </div>
+      )}
 
       {selectedNode && (
         <NodeEditor
