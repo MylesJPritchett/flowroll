@@ -100,7 +100,7 @@ function ActionRow({ node, taxonomy, onUpdate, onDelete, onTaxonomyChange }: { n
           {node.action_name || "Select Action"}
         </span>
         <span className="text-[10px] text-zinc-500">
-          {isA ? "Player A" : "Player B"}
+          {isA ? "Role A" : "Role B"}
         </span>
         <div className="flex-1" />
         <button
@@ -120,7 +120,7 @@ function ActionRow({ node, taxonomy, onUpdate, onDelete, onTaxonomyChange }: { n
               actor: node.actor,
             }}
             taxonomy={taxonomy}
-            roleLabels={{ roleA: "Player A", roleB: "Player B" }}
+            roleLabels={{ roleA: "Role A", roleB: "Role B" }}
             onChange={(d) => onUpdate({ ...node, ...d })}
             onTaxonomyChange={onTaxonomyChange}
           />

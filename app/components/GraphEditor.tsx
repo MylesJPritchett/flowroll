@@ -326,7 +326,7 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, onNodesCha
         setEditorPos(clampEditorPos(clientX, clientY));
       }
     },
-    [screenToFlowPosition, setNodes, setEdges, clampEditorPos, nodes],
+    [screenToFlowPosition, setNodes, setEdges, clampEditorPos, nodes, taxonomy.actions],
   );
 
   const addStateNode = useCallback(() => {

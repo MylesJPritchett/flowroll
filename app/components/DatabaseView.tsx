@@ -558,7 +558,7 @@ function ActionRowWithPrereqs({
       <div className="space-y-2">
         {(["A", "B"] as const).map((role) => (
           <div key={role}>
-            <div className="mb-0.5 text-[9px] font-semibold text-zinc-300">Player {role}</div>
+            <div className="mb-0.5 text-[9px] font-semibold text-zinc-300">Role {role}</div>
             <div className="space-y-1 ml-1">
               {groups.map((group) => {
                 if (group.options.length === 0) return null;
