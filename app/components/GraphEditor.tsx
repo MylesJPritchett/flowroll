@@ -37,6 +37,143 @@ const edgeStyle: Partial<Edge> = {
   style: { stroke: "#52525b", strokeWidth: 1.5 },
 };
 
+// --- Condition matching helpers ---
+
+function conditionsMatch(a: StateCondition[], b: StateCondition[]): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((ac) => b.some((bc) => ac.groupId === bc.groupId && ac.value === bc.value && ac.role === bc.role));
+}
+
+function conditionOverlap(a: StateCondition[], b: StateCondition[]): number {
+  return a.filter((ac) => b.some((bc) => ac.groupId === bc.groupId && ac.value === bc.value && ac.role === bc.role)).length;
+}
+
+// --- State Suggestion Popup ---
+
+function StateSuggestionPopup({
+  pendingSuggestion,
+  nodes,
+  taxonomy,
+  position,
+  onSelect,
+  onCreateNew,
+  onClose,
+}: {
+  pendingSuggestion: {
+    expectedName: string;
+    expectedConditions: StateCondition[];
+  };
+  nodes: Node[];
+  taxonomy: Taxonomy;
+  position: { x: number; y: number };
+  onSelect: (existingNodeId: string | null) => void;
+  onCreateNew: () => void;
+  onClose: () => void;
+}) {
+  const { expectedName, expectedConditions } = pendingSuggestion;
+  const roles = getRoleLabels(expectedName, taxonomy.positions);
+  const roleLabel = (role: "A" | "B") => (role === "A" ? roles.roleA : roles.roleB);
+
+  // Find existing state nodes, scored by similarity
+  const candidates = nodes
+    .filter((n) => n.type === "state")
+    .map((n) => {
+      const d = n.data as Record<string, unknown>;
+      const name = (d.position_name as string) ?? "";
+      const conditions = (d.conditions as StateCondition[]) ?? [];
+      const nameMatch = name === expectedName;
+      const exact = nameMatch && conditionsMatch(conditions, expectedConditions);
+      const overlap = conditionOverlap(conditions, expectedConditions);
+      return { id: n.id, name, conditions, nameMatch, exact, overlap };
+    })
+    .filter((c) => c.nameMatch)
+    .sort((a, b) => {
+      if (a.exact !== b.exact) return a.exact ? -1 : 1;
+      return b.overlap - a.overlap;
+    });
+
+  return (
+    <div
+      style={{ left: position.x, top: position.y }}
+      className="absolute z-20 w-72 rounded-lg border border-zinc-700 bg-zinc-800 p-3 shadow-lg max-h-[60vh] overflow-y-auto"
+    >
+      <div className="mb-2 flex items-center justify-between">
+        <h3 className="text-xs font-semibold text-zinc-100">Connect to state</h3>
+        <button onClick={onClose} className="text-zinc-400 hover:text-zinc-200 text-sm">&times;</button>
+      </div>
+
+      {/* Expected output — click to create new state with these conditions */}
+      <button
+        onClick={() => onSelect(null)}
+        className="mb-2 w-full text-left rounded border border-indigo-500/50 bg-indigo-950/20 px-2.5 py-1.5 transition-colors hover:bg-indigo-950/40"
+      >
+        <div className="text-[10px] text-indigo-400 mb-1">+ Create new state</div>
+        <div className="text-xs font-medium text-zinc-200">{expectedName}</div>
+        {expectedConditions.length > 0 && (
+          <div className="mt-1 flex flex-wrap gap-0.5">
+            {expectedConditions.map((c) => (
+              <span
+                key={`${c.groupId}-${c.role}`}
+                className={`rounded-full px-1.5 py-0.5 text-[8px] font-medium ${
+                  c.role === "A" ? "bg-blue-500/20 text-blue-300" : "bg-amber-500/20 text-amber-300"
+                }`}
+              >
+                <span className="opacity-60">{roleLabel(c.role)}</span> {c.value}
+              </span>
+            ))}
+          </div>
+        )}
+      </button>
+
+      {/* Matching existing states */}
+      {candidates.length > 0 && (
+        <div>
+          <div className="text-[10px] text-zinc-500 mb-1">Or connect to existing</div>
+          <div className="space-y-1">
+            {candidates.map((c) => (
+              <button
+                key={c.id}
+                onClick={() => onSelect(c.id)}
+                className={`w-full text-left rounded border px-2.5 py-1.5 transition-colors ${
+                  c.exact
+                    ? "border-green-500/50 bg-green-950/30 hover:bg-green-950/50"
+                    : "border-zinc-600/50 bg-zinc-900 hover:bg-zinc-700/50"
+                }`}
+              >
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-medium text-zinc-200">{c.name}</span>
+                  {c.exact && <span className="text-[8px] text-green-400 font-medium">exact match</span>}
+                </div>
+                {c.conditions.length > 0 && (
+                  <div className="mt-0.5 flex flex-wrap gap-0.5">
+                    {c.conditions.map((cond) => (
+                      <span
+                        key={`${cond.groupId}-${cond.role}`}
+                        className={`rounded-full px-1 py-0.5 text-[8px] font-medium ${
+                          cond.role === "A" ? "bg-blue-500/15 text-blue-300/80" : "bg-amber-500/15 text-amber-300/80"
+                        }`}
+                      >
+                        {cond.value}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <button
+        onClick={onCreateNew}
+        className="mt-2 w-full rounded-md border border-zinc-600 px-3 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-700"
+      >
+        + Create different state
+      </button>
+    </div>
+  );
+}
+
 // --- Conversion helpers ---
 
 function getStateWarnings(node: GraphStateNode, taxonomy: Taxonomy): string[] {
@@ -251,6 +388,16 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, onNodesCha
     [setEdges, nodes, applyActionEffects],
   );
 
+  // Pending suggestion state: when dragging from action → empty space
+  interface PendingSuggestion {
+    actionNodeId: string;
+    flowPosition: { x: number; y: number };
+    expectedName: string;
+    expectedConditions: StateCondition[];
+    expectedGiNogi: GiNogi;
+  }
+  const [pendingSuggestion, setPendingSuggestion] = useState<PendingSuggestion | null>(null);
+
   const [focusTitle, setFocusTitle] = useState(false);
   const [editorPos, setEditorPos] = useState({ x: 0, y: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
@@ -291,7 +438,7 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, onNodesCha
       const edgeId = `e${nodeId}`;
 
       if (sourceType === "action") {
-        // From action → create state, inheriting from source state + applying effects
+        // From action → compute expected state, show suggestions
         const actionData = sourceNode?.data as Record<string, unknown> | undefined;
         const actionId = actionData?.action_id as string | undefined;
         const actor = (actionData?.actor as "A" | "B") ?? "A";
@@ -302,35 +449,32 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, onNodesCha
         const parentState = inEdge ? nodes.find((n) => n.id === inEdge.source && n.type === "state") : undefined;
         const parentData = parentState?.data as Record<string, unknown> | undefined;
 
-        let initialConditions: StateCondition[] = parentData ? [...((parentData.conditions as StateCondition[]) ?? [])] : [];
-        const inheritedName = (parentData?.position_name as string) ?? "New State";
-        const inheritedGiNogi = (parentData?.giNogi as GiNogi) ?? "";
+        let expectedConditions: StateCondition[] = parentData ? [...((parentData.conditions as StateCondition[]) ?? [])] : [];
+        const expectedName = (parentData?.position_name as string) ?? "New State";
+        const expectedGiNogi = (parentData?.giNogi as GiNogi) ?? "";
 
         if (action) {
-          // Remove conditions first (resolve actor/opponent → A/B)
           for (const rem of action.removes_conditions) {
             const resolvedRole = resolveConditionRole(rem.role, actor);
-            initialConditions = initialConditions.filter((c) => !(c.groupId === rem.groupId && c.value === rem.value && c.role === resolvedRole));
+            expectedConditions = expectedConditions.filter((c) => !(c.groupId === rem.groupId && c.value === rem.value && c.role === resolvedRole));
           }
-          // Then add conditions (resolve actor/opponent → A/B, replace within same group+role since exclusive)
           for (const add of action.adds_conditions) {
             const resolvedRole = resolveConditionRole(add.role, actor);
-            initialConditions = initialConditions.filter((c) => !(c.groupId === add.groupId && c.role === resolvedRole));
-            initialConditions.push({ groupId: add.groupId, value: add.value, role: resolvedRole });
+            expectedConditions = expectedConditions.filter((c) => !(c.groupId === add.groupId && c.role === resolvedRole));
+            expectedConditions.push({ groupId: add.groupId, value: add.value, role: resolvedRole });
           }
         }
-        const newNode: Node = {
-          id: nodeId,
-          type: "state",
-          position,
-          data: { position_name: inheritedName, conditions: initialConditions, giNogi: inheritedGiNogi, description: "" },
-        };
-        setNodes((nds) => [...nds, newNode]);
-        setEdges((eds) => [...eds, { id: edgeId, source: sourceId, target: nodeId, ...edgeStyle } as Edge]);
+
         justCreatedNode.current = true;
-        setSelectedStateNode(newNode);
+        setPendingSuggestion({
+          actionNodeId: sourceId,
+          flowPosition: position,
+          expectedName,
+          expectedConditions,
+          expectedGiNogi,
+        });
+        setSelectedStateNode(null);
         setSelectedActionNode(null);
-        setFocusTitle(true);
         setEditorPos(clampEditorPos(clientX, clientY));
       } else {
         // From state → create action
@@ -348,7 +492,7 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, onNodesCha
         setEditorPos(clampEditorPos(clientX, clientY));
       }
     },
-    [screenToFlowPosition, setNodes, setEdges, clampEditorPos, nodes, taxonomy.actions],
+    [screenToFlowPosition, setNodes, setEdges, clampEditorPos, nodes, edges, taxonomy.actions],
   );
 
   const addStateNode = useCallback(() => {
@@ -398,6 +542,7 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, onNodesCha
     }
     setSelectedStateNode(null);
     setSelectedActionNode(null);
+    setPendingSuggestion(null);
   }, []);
 
   const updateStateNode = useCallback(
@@ -410,10 +555,42 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, onNodesCha
 
   const updateActionNode = useCallback(
     (id: string, data: { action_id: string; action_name: string; actor: "A" | "B" }) => {
-      setNodes((nds) => nds.map((n) => (n.id === id ? { ...n, data: { ...n.data, ...data } } : n)));
+      setNodes((nds) => {
+        const updated = nds.map((n) => (n.id === id ? { ...n, data: { ...n.data, ...data } } : n));
+
+        // Re-apply action effects to the downstream state when actor or action changes
+        const action = taxonomy.actions.find((a) => a.id === data.action_id);
+        const outEdge = edges.find((e) => e.source === id);
+        const targetId = outEdge?.target;
+        if (!action || !targetId) return updated;
+
+        // Find the source state (upstream of this action)
+        const inEdge = edges.find((e) => e.target === id);
+        const sourceNode = inEdge ? updated.find((n) => n.id === inEdge.source && n.type === "state") : undefined;
+        const sourceData = sourceNode?.data as Record<string, unknown> | undefined;
+        const baseConditions: StateCondition[] = sourceData ? [...((sourceData.conditions as StateCondition[]) ?? [])] : [];
+
+        // Apply effects with the new actor
+        let conditions = baseConditions;
+        for (const rem of action.removes_conditions) {
+          const resolvedRole = resolveConditionRole(rem.role, data.actor);
+          conditions = conditions.filter((c) => !(c.groupId === rem.groupId && c.value === rem.value && c.role === resolvedRole));
+        }
+        for (const add of action.adds_conditions) {
+          const resolvedRole = resolveConditionRole(add.role, data.actor);
+          conditions = conditions.filter((c) => !(c.groupId === add.groupId && c.role === resolvedRole));
+          conditions.push({ groupId: add.groupId, value: add.value, role: resolvedRole });
+        }
+
+        return updated.map((n) =>
+          n.id === targetId && n.type === "state"
+            ? { ...n, data: { ...n.data, conditions } }
+            : n,
+        );
+      });
       setSelectedActionNode((prev) => (prev && prev.id === id ? { ...prev, data: { ...prev.data, ...data } } : prev));
     },
-    [setNodes],
+    [setNodes, edges, taxonomy.actions],
   );
 
   const deleteNode = useCallback(
@@ -425,6 +602,54 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, onNodesCha
     },
     [setNodes, setEdges],
   );
+
+  // Handle suggestion selection: connect to existing state or create new
+  const handleSuggestionSelect = useCallback(
+    (existingNodeId: string | null) => {
+      if (!pendingSuggestion) return;
+      const { actionNodeId, flowPosition, expectedName, expectedConditions, expectedGiNogi } = pendingSuggestion;
+
+      if (existingNodeId) {
+        // Connect to existing state
+        const edgeId = `e${Date.now()}`;
+        setEdges((eds) => [...eds, { id: edgeId, source: actionNodeId, target: existingNodeId, ...edgeStyle } as Edge]);
+      } else {
+        // Create new state
+        const nodeId = `${Date.now()}`;
+        const edgeId = `e${nodeId}`;
+        const newNode: Node = {
+          id: nodeId,
+          type: "state",
+          position: flowPosition,
+          data: { position_name: expectedName, conditions: expectedConditions, giNogi: expectedGiNogi, description: "" },
+        };
+        setNodes((nds) => [...nds, newNode]);
+        setEdges((eds) => [...eds, { id: edgeId, source: actionNodeId, target: nodeId, ...edgeStyle } as Edge]);
+        setSelectedStateNode(newNode);
+        setFocusTitle(true);
+      }
+      setPendingSuggestion(null);
+    },
+    [pendingSuggestion, setNodes, setEdges],
+  );
+
+  const handleCreateNewState = useCallback(() => {
+    if (!pendingSuggestion) return;
+    const { actionNodeId, flowPosition } = pendingSuggestion;
+    const nodeId = `${Date.now()}`;
+    const edgeId = `e${nodeId}`;
+    const newNode: Node = {
+      id: nodeId,
+      type: "state",
+      position: flowPosition,
+      data: { position_name: "New State", conditions: [], giNogi: "", description: "" },
+    };
+    setNodes((nds) => [...nds, newNode]);
+    setEdges((eds) => [...eds, { id: edgeId, source: actionNodeId, target: nodeId, ...edgeStyle } as Edge]);
+    setSelectedStateNode(newNode);
+    setFocusTitle(true);
+    setPendingSuggestion(null);
+  }, [pendingSuggestion, setNodes, setEdges]);
 
   // Get role labels for an action node from its connected source state
   const getActionRoleLabels = useCallback(
@@ -481,6 +706,18 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, onNodesCha
           onDelete={deleteNode}
           onClose={() => { setSelectedStateNode(null); setFocusTitle(false); }}
           onTaxonomyChange={onTaxonomyChange}
+        />
+      )}
+
+      {pendingSuggestion && (
+        <StateSuggestionPopup
+          pendingSuggestion={pendingSuggestion}
+          nodes={nodes}
+          taxonomy={taxonomy}
+          position={editorPos}
+          onSelect={handleSuggestionSelect}
+          onCreateNew={handleCreateNewState}
+          onClose={() => setPendingSuggestion(null)}
         />
       )}
 
