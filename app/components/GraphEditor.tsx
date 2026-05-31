@@ -40,9 +40,50 @@ const edgeStyle: Partial<Edge> = {
 
 // --- Conversion helpers ---
 
-function toRFNodes(dbNodes: GraphNode[], positions: DBPosition[]): Node[] {
+function getStateWarnings(node: GraphStateNode, taxonomy: Taxonomy): string[] {
+  const warnings: string[] = [];
+  const pos = taxonomy.positions.find((p) => p.name === node.position_name);
+  if (!pos) return warnings;
+  const reqs = taxonomy.positionRequirements[pos.id];
+  if (!reqs) return warnings;
+  for (const req of reqs) {
+    const opt = taxonomy.conditionGroups
+      .flatMap((g) => g.options)
+      .find((o) => o.id === req.condition_option_id);
+    if (!opt) continue;
+    const has = node.conditions.some((c) => c.value === opt.label && c.role === req.role);
+    if (!has) {
+      const roleLabel = req.role === "A" ? pos.role_a : pos.role_b;
+      warnings.push(`Missing required: ${roleLabel} ${opt.label}`);
+    }
+  }
+  return warnings;
+}
+
+function getActionWarnings(node: GraphActionNode, sourceState: GraphStateNode | undefined, taxonomy: Taxonomy): string[] {
+  const warnings: string[] = [];
+  const action = taxonomy.actions.find((a) => a.id === node.action_id);
+  if (!action || !sourceState) return warnings;
+  for (const req of action.required_conditions) {
+    const has = sourceState.conditions.some((c) => c.groupId === req.groupId && c.value === req.value && c.role === req.role);
+    if (!has) warnings.push(`Requires: ${req.value}`);
+  }
+  for (const forb of action.forbidden_conditions) {
+    const has = sourceState.conditions.some((c) => c.groupId === forb.groupId && c.value === forb.value && c.role === forb.role);
+    if (has) warnings.push(`Forbidden: ${forb.value}`);
+  }
+  return warnings;
+}
+
+function toRFNodes(dbNodes: GraphNode[], dbEdges: GraphEdge[], taxonomy: Taxonomy): Node[] {
+  const nodesById = new Map(dbNodes.map((n) => [n.id, n]));
   return dbNodes.map((n) => {
     if (n.type === "action") {
+      // Find source state via incoming edge
+      const inEdge = dbEdges.find((e) => e.target_node_id === n.id);
+      const sourceNode = inEdge ? nodesById.get(inEdge.source_node_id) : undefined;
+      const sourceState = sourceNode?.type === "state" ? sourceNode : undefined;
+      const warnings = getActionWarnings(n, sourceState, taxonomy);
       return {
         id: n.id,
         type: "action",
@@ -51,10 +92,12 @@ function toRFNodes(dbNodes: GraphNode[], positions: DBPosition[]): Node[] {
           action_id: n.action_id,
           action_name: n.action_name,
           actor: n.actor,
+          warnings,
         },
       };
     }
-    const roles = getRoleLabels(n.position_name, positions);
+    const roles = getRoleLabels(n.position_name, taxonomy.positions);
+    const warnings = getStateWarnings(n, taxonomy);
     return {
       id: n.id,
       type: "state",
@@ -66,6 +109,7 @@ function toRFNodes(dbNodes: GraphNode[], positions: DBPosition[]): Node[] {
         description: n.description,
         roleA: roles.roleA,
         roleB: roles.roleB,
+        warnings,
       },
     };
   });
@@ -136,7 +180,7 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, onNodesCha
   // Sync from parent → local RF state
   useEffect(() => {
     syncing.current = true;
-    setNodes(toRFNodes(dbNodes, taxonomy.positions));
+    setNodes(toRFNodes(dbNodes, dbEdges, taxonomy));
     setEdges(toRFEdges(dbEdges));
     setTimeout(() => { syncing.current = false; }, 50);
   }, [dbNodes, dbEdges, setNodes, setEdges]);

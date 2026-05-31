@@ -17,9 +17,12 @@ import {
   updateAction,
   deleteAction,
   setOfficial,
+  setPositionRequirement,
   type Position,
   type ConditionGroup,
   type Action,
+  type PositionRequirement,
+  type ConditionRef,
 } from "../actions/taxonomy";
 
 function OfficialBadge() {
@@ -41,6 +44,7 @@ export default function DatabaseView({ mode, userId }: DatabaseViewProps) {
   const [groups, setGroups] = useState<ConditionGroup[]>([]);
   const [actions, setActions] = useState<Action[]>([]);
   const [pcMap, setPcMap] = useState<Record<string, Set<string>>>({});
+  const [posReqs, setPosReqs] = useState<Record<string, PositionRequirement[]>>({});
   const [loading, setLoading] = useState(true);
 
   const tabs = ["positions", "conditions", "actions", "mappings"] as const;
@@ -70,6 +74,7 @@ export default function DatabaseView({ mode, userId }: DatabaseViewProps) {
           map[key] = new Set(ids);
         }
         setPcMap(map);
+        setPosReqs(data.positionRequirements);
       }
       setLoading(false);
     });
@@ -147,57 +152,32 @@ export default function DatabaseView({ mode, userId }: DatabaseViewProps) {
             </button>
           </div>
           <div className="space-y-1">
-            {positions.map((pos) => {
-              const editable = canEdit(pos);
-              return (
-                <div key={pos.id} className="flex items-center gap-2 rounded border border-zinc-800 bg-zinc-900 px-3 py-2">
-                  {pos.is_official && <OfficialBadge />}
-                  {mode === "admin" && (
-                    <button
-                      onClick={() => handleToggleOfficial("positions", pos.id, pos.is_official)}
-                      className={`text-[9px] px-1.5 py-0.5 rounded transition-colors ${pos.is_official ? "bg-green-600/20 text-green-400" : "bg-zinc-700 text-zinc-500 hover:text-green-400"}`}
-                      title={pos.is_official ? "Remove official" : "Make official"}
-                    >
-                      {pos.is_official ? "official" : "set official"}
-                    </button>
-                  )}
-                  <input
-                    type="text"
-                    value={pos.name}
-                    disabled={!editable}
-                    onChange={(e) => {
-                      updatePosition(pos.id, { name: e.target.value });
-                      setPositions((prev) => prev.map((p) => (p.id === pos.id ? { ...p, name: e.target.value } : p)));
-                    }}
-                    className={`flex-1 rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-sm text-zinc-100 outline-none focus:border-indigo-500 ${!editable ? "opacity-50" : ""}`}
-                  />
-                  <input
-                    type="text"
-                    value={pos.role_a}
-                    disabled={!editable}
-                    onChange={(e) => {
-                      updatePosition(pos.id, { role_a: e.target.value });
-                      setPositions((prev) => prev.map((p) => (p.id === pos.id ? { ...p, role_a: e.target.value } : p)));
-                    }}
-                    className={`w-24 rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-sm text-zinc-100 outline-none focus:border-indigo-500 ${!editable ? "opacity-50" : ""}`}
-                  />
-                  <input
-                    type="text"
-                    value={pos.role_b}
-                    disabled={!editable}
-                    onChange={(e) => {
-                      updatePosition(pos.id, { role_b: e.target.value });
-                      setPositions((prev) => prev.map((p) => (p.id === pos.id ? { ...p, role_b: e.target.value } : p)));
-                    }}
-                    className={`w-24 rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-sm text-zinc-100 outline-none focus:border-indigo-500 ${!editable ? "opacity-50" : ""}`}
-                  />
-                  <CreatedByBadge createdBy={pos.created_by} />
-                  {editable && (
-                    <button onClick={() => { deletePosition(pos.id); setPositions((prev) => prev.filter((p) => p.id !== pos.id)); }} className="text-zinc-500 hover:text-red-400 transition-colors px-1">&times;</button>
-                  )}
-                </div>
-              );
-            })}
+            {positions.map((pos) => (
+              <PositionRowWithReqs
+                key={pos.id}
+                position={pos}
+                groups={groups}
+                requirements={posReqs[pos.id] ?? []}
+                editable={canEdit(pos)}
+                mode={mode}
+                onUpdate={(updates) => {
+                  updatePosition(pos.id, updates);
+                  setPositions((prev) => prev.map((p) => (p.id === pos.id ? { ...p, ...updates } : p)));
+                }}
+                onDelete={() => { deletePosition(pos.id); setPositions((prev) => prev.filter((p) => p.id !== pos.id)); }}
+                onToggleOfficial={() => handleToggleOfficial("positions", pos.id, pos.is_official)}
+                onToggleRequirement={async (optionId, role, required) => {
+                  await setPositionRequirement(pos.id, optionId, role, required);
+                  setPosReqs((prev) => {
+                    const current = prev[pos.id] ?? [];
+                    if (required) {
+                      return { ...prev, [pos.id]: [...current, { id: "", position_id: pos.id, condition_option_id: optionId, role }] };
+                    }
+                    return { ...prev, [pos.id]: current.filter((r) => !(r.condition_option_id === optionId && r.role === role)) };
+                  });
+                }}
+              />
+            ))}
           </div>
         </section>
       )}
@@ -325,50 +305,21 @@ export default function DatabaseView({ mode, userId }: DatabaseViewProps) {
             </button>
           </div>
           <div className="space-y-1">
-            {actions.map((action) => {
-              const editable = canEdit(action);
-              return (
-                <div key={action.id} className="flex items-center gap-2 rounded border border-zinc-800 bg-zinc-900 px-3 py-2">
-                  {action.is_official && <OfficialBadge />}
-                  {mode === "admin" && (
-                    <button
-                      onClick={() => handleToggleOfficial("actions", action.id, action.is_official)}
-                      className={`text-[9px] px-1.5 py-0.5 rounded transition-colors ${action.is_official ? "bg-green-600/20 text-green-400" : "bg-zinc-700 text-zinc-500 hover:text-green-400"}`}
-                    >
-                      {action.is_official ? "official" : "set official"}
-                    </button>
-                  )}
-                  <input
-                    type="text"
-                    value={action.name}
-                    disabled={!editable}
-                    onChange={(e) => {
-                      updateAction(action.id, { name: e.target.value });
-                      setActions((prev) => prev.map((a) => a.id === action.id ? { ...a, name: e.target.value } : a));
-                    }}
-                    className={`flex-1 rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-sm text-zinc-100 outline-none focus:border-indigo-500 ${!editable ? "opacity-50" : ""}`}
-                  />
-                  <select
-                    value={action.gi_nogi}
-                    disabled={!editable}
-                    onChange={(e) => {
-                      const v = e.target.value as "" | "gi" | "nogi";
-                      updateAction(action.id, { gi_nogi: v });
-                      setActions((prev) => prev.map((a) => a.id === action.id ? { ...a, gi_nogi: v } : a));
-                    }}
-                    className={`rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-100 outline-none focus:border-indigo-500 ${!editable ? "opacity-50" : ""}`}
-                  >
-                    <option value="">Both</option>
-                    <option value="gi">Gi</option>
-                    <option value="nogi">No-Gi</option>
-                  </select>
-                  <CreatedByBadge createdBy={action.created_by} />
-                  {editable && (
-                    <button onClick={() => { deleteAction(action.id); setActions((prev) => prev.filter((a) => a.id !== action.id)); }} className="text-zinc-500 hover:text-red-400 transition-colors px-1">&times;</button>
-                  )}
-                </div>
-              );
-            })}
+            {actions.map((action) => (
+              <ActionRowWithPrereqs
+                key={action.id}
+                action={action}
+                groups={groups}
+                editable={canEdit(action)}
+                mode={mode}
+                onUpdate={(updates) => {
+                  updateAction(action.id, updates);
+                  setActions((prev) => prev.map((a) => a.id === action.id ? { ...a, ...updates } : a));
+                }}
+                onDelete={() => { deleteAction(action.id); setActions((prev) => prev.filter((a) => a.id !== action.id)); }}
+                onToggleOfficial={() => handleToggleOfficial("actions", action.id, action.is_official)}
+              />
+            ))}
           </div>
         </section>
       )}
@@ -454,6 +405,253 @@ function PositionMappingRow({
               })}
             </div>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// --- Position Row with Requirements ---
+
+function PositionRowWithReqs({
+  position,
+  groups,
+  requirements,
+  editable,
+  mode,
+  onUpdate,
+  onDelete,
+  onToggleOfficial,
+  onToggleRequirement,
+}: {
+  position: Position;
+  groups: ConditionGroup[];
+  requirements: PositionRequirement[];
+  editable: boolean;
+  mode: "database" | "admin";
+  onUpdate: (updates: { name?: string; role_a?: string; role_b?: string }) => void;
+  onDelete: () => void;
+  onToggleOfficial: () => void;
+  onToggleRequirement: (optionId: string, role: "A" | "B", required: boolean) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const isRequired = (optionId: string, role: "A" | "B") =>
+    requirements.some((r) => r.condition_option_id === optionId && r.role === role);
+
+  return (
+    <div className="rounded border border-zinc-800 bg-zinc-900">
+      <div className="flex items-center gap-2 px-3 py-2">
+        <button onClick={() => setExpanded(!expanded)} className="text-zinc-500 text-xs select-none">
+          {expanded ? "▼" : "▶"}
+        </button>
+        {position.is_official && <OfficialBadge />}
+        {mode === "admin" && (
+          <button
+            onClick={onToggleOfficial}
+            className={`text-[9px] px-1.5 py-0.5 rounded transition-colors ${position.is_official ? "bg-green-600/20 text-green-400" : "bg-zinc-700 text-zinc-500 hover:text-green-400"}`}
+          >
+            {position.is_official ? "official" : "set official"}
+          </button>
+        )}
+        <input
+          type="text" value={position.name} disabled={!editable}
+          onChange={(e) => onUpdate({ name: e.target.value })}
+          className={`flex-1 rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-sm text-zinc-100 outline-none focus:border-indigo-500 ${!editable ? "opacity-50" : ""}`}
+        />
+        <input
+          type="text" value={position.role_a} disabled={!editable}
+          onChange={(e) => onUpdate({ role_a: e.target.value })}
+          className={`w-24 rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-sm text-zinc-100 outline-none focus:border-indigo-500 ${!editable ? "opacity-50" : ""}`}
+        />
+        <input
+          type="text" value={position.role_b} disabled={!editable}
+          onChange={(e) => onUpdate({ role_b: e.target.value })}
+          className={`w-24 rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-sm text-zinc-100 outline-none focus:border-indigo-500 ${!editable ? "opacity-50" : ""}`}
+        />
+        <CreatedByBadge createdBy={position.created_by} />
+        {editable && (
+          <button onClick={onDelete} className="text-zinc-500 hover:text-red-400 transition-colors px-1">&times;</button>
+        )}
+      </div>
+      {expanded && (
+        <div className="px-4 pb-3 pt-1">
+          <div className="text-[10px] font-medium text-zinc-400 mb-2">Required Conditions</div>
+          <p className="text-[9px] text-zinc-600 mb-2">Toggle conditions that MUST be present for this position to be valid.</p>
+          <div className="space-y-2">
+            {(["A", "B"] as const).map((role) => {
+              const roleLabel = role === "A" ? position.role_a : position.role_b;
+              return (
+                <div key={role}>
+                  <div className="mb-1 text-[9px] font-semibold text-zinc-300">{roleLabel}</div>
+                  <div className="space-y-1 ml-1">
+                    {groups.map((group) => {
+                      if (group.options.length === 0) return null;
+                      return (
+                        <div key={group.id} className="flex items-center gap-1">
+                          <span className="w-20 shrink-0 text-[9px] font-medium text-zinc-500">{group.name}</span>
+                          <div className="flex flex-wrap gap-0.5">
+                            {group.options.map((opt) => {
+                              const req = isRequired(opt.id, role);
+                              return (
+                                <button
+                                  key={opt.id}
+                                  disabled={!editable}
+                                  onClick={() => onToggleRequirement(opt.id, role, !req)}
+                                  className={`rounded-full px-1.5 py-0.5 text-[9px] font-medium transition-colors ${
+                                    req
+                                      ? "bg-amber-500 text-white"
+                                      : "bg-zinc-700/50 text-zinc-500 hover:bg-zinc-700"
+                                  }`}
+                                >
+                                  {opt.label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// --- Action Row with Prerequisites ---
+
+function ActionRowWithPrereqs({
+  action,
+  groups,
+  editable,
+  mode,
+  onUpdate,
+  onDelete,
+  onToggleOfficial,
+}: {
+  action: Action;
+  groups: ConditionGroup[];
+  editable: boolean;
+  mode: "database" | "admin";
+  onUpdate: (updates: Partial<Action>) => void;
+  onDelete: () => void;
+  onToggleOfficial: () => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+
+  const toggleConditionRef = (list: ConditionRef[], ref: ConditionRef): ConditionRef[] => {
+    const exists = list.some((r) => r.groupId === ref.groupId && r.value === ref.value && r.role === ref.role);
+    if (exists) return list.filter((r) => !(r.groupId === ref.groupId && r.value === ref.value && r.role === ref.role));
+    return [...list, ref];
+  };
+
+  const isInList = (list: ConditionRef[], groupId: string, value: string, role: "A" | "B") =>
+    list.some((r) => r.groupId === groupId && r.value === value && r.role === role);
+
+  const renderConditionPicker = (label: string, list: ConditionRef[], color: string, onToggle: (ref: ConditionRef) => void) => (
+    <div>
+      <div className="text-[10px] font-medium text-zinc-400 mb-1">{label}</div>
+      <div className="space-y-2">
+        {(["A", "B"] as const).map((role) => (
+          <div key={role}>
+            <div className="mb-0.5 text-[9px] font-semibold text-zinc-300">Player {role}</div>
+            <div className="space-y-1 ml-1">
+              {groups.map((group) => {
+                if (group.options.length === 0) return null;
+                return (
+                  <div key={group.id} className="flex items-center gap-1">
+                    <span className="w-20 shrink-0 text-[9px] font-medium text-zinc-500">{group.name}</span>
+                    <div className="flex flex-wrap gap-0.5">
+                      {group.options.map((opt) => {
+                        const active = isInList(list, group.id, opt.label, role);
+                        return (
+                          <button
+                            key={opt.label}
+                            disabled={!editable}
+                            onClick={() => onToggle({ groupId: group.id, value: opt.label, role })}
+                            className={`rounded-full px-1.5 py-0.5 text-[9px] font-medium transition-colors ${
+                              active ? `${color} text-white` : "bg-zinc-700/50 text-zinc-500 hover:bg-zinc-700"
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="rounded border border-zinc-800 bg-zinc-900">
+      <div className="flex items-center gap-2 px-3 py-2">
+        <button onClick={() => setExpanded(!expanded)} className="text-zinc-500 text-xs select-none">
+          {expanded ? "▼" : "▶"}
+        </button>
+        {action.is_official && <OfficialBadge />}
+        {mode === "admin" && (
+          <button
+            onClick={onToggleOfficial}
+            className={`text-[9px] px-1.5 py-0.5 rounded transition-colors ${action.is_official ? "bg-green-600/20 text-green-400" : "bg-zinc-700 text-zinc-500 hover:text-green-400"}`}
+          >
+            {action.is_official ? "official" : "set official"}
+          </button>
+        )}
+        <input
+          type="text" value={action.name} disabled={!editable}
+          onChange={(e) => onUpdate({ name: e.target.value })}
+          className={`flex-1 rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-sm text-zinc-100 outline-none focus:border-indigo-500 ${!editable ? "opacity-50" : ""}`}
+        />
+        <select
+          value={action.gi_nogi} disabled={!editable}
+          onChange={(e) => onUpdate({ gi_nogi: e.target.value as "" | "gi" | "nogi" })}
+          className={`rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-100 outline-none focus:border-indigo-500 ${!editable ? "opacity-50" : ""}`}
+        >
+          <option value="">Both</option>
+          <option value="gi">Gi</option>
+          <option value="nogi">No-Gi</option>
+        </select>
+        {action.required_conditions.length > 0 && (
+          <span className="text-[9px] text-green-400" title="Has required conditions">req:{action.required_conditions.length}</span>
+        )}
+        {action.forbidden_conditions.length > 0 && (
+          <span className="text-[9px] text-red-400" title="Has forbidden conditions">forb:{action.forbidden_conditions.length}</span>
+        )}
+        <CreatedByBadge createdBy={action.created_by} />
+        {editable && (
+          <button onClick={onDelete} className="text-zinc-500 hover:text-red-400 transition-colors px-1">&times;</button>
+        )}
+      </div>
+      {expanded && (
+        <div className="px-4 pb-3 pt-1 space-y-3">
+          {renderConditionPicker(
+            "Required Conditions (must be present to use this action)",
+            action.required_conditions,
+            "bg-green-600",
+            (ref) => {
+              const next = toggleConditionRef(action.required_conditions, ref);
+              onUpdate({ required_conditions: next });
+            },
+          )}
+          {renderConditionPicker(
+            "Forbidden Conditions (action cannot be used if present)",
+            action.forbidden_conditions,
+            "bg-red-600",
+            (ref) => {
+              const next = toggleConditionRef(action.forbidden_conditions, ref);
+              onUpdate({ forbidden_conditions: next });
+            },
+          )}
         </div>
       )}
     </div>

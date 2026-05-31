@@ -12,12 +12,23 @@ export default function BJJNode({ data }: NodeProps) {
 
   const roleLabel = (role: "A" | "B") => (role === "A" ? roleA : roleB);
 
+  const warnings = (d.warnings as string[]) ?? [];
+
   return (
-    <div className="rounded-lg border border-zinc-300 bg-white px-4 py-3 shadow-sm dark:border-zinc-600 dark:bg-zinc-800">
+    <div className={`rounded-lg border px-4 py-3 shadow-sm ${
+      warnings.length > 0
+        ? "border-amber-500/60 bg-amber-950/20 dark:border-amber-500/60 dark:bg-amber-950/20"
+        : "border-zinc-300 bg-white dark:border-zinc-600 dark:bg-zinc-800"
+    }`}>
       <Handle type="target" position={Position.Top} className="!bg-indigo-500" />
-      <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
-        {positionName}
-      </span>
+      <div className="flex items-center gap-1.5">
+        <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
+          {positionName}
+        </span>
+        {warnings.length > 0 && (
+          <span className="text-amber-400 text-[10px]" title={warnings.join("\n")}>&#9888;</span>
+        )}
+      </div>
       {conditions.length > 0 && (
         <div className="mt-1.5 flex flex-wrap gap-1">
           {conditions.map((c) => (

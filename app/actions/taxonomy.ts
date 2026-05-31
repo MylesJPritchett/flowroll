@@ -34,12 +34,27 @@ export interface ConditionGroup extends OwnershipFields {
   options: ConditionOption[];
 }
 
+export interface ConditionRef {
+  groupId: string;
+  value: string;
+  role: "A" | "B";
+}
+
 export interface Action extends OwnershipFields {
   id: string;
   name: string;
   description: string;
   gi_nogi: "" | "gi" | "nogi";
+  required_conditions: ConditionRef[];
+  forbidden_conditions: ConditionRef[];
   sort_order: number;
+}
+
+export interface PositionRequirement {
+  id: string;
+  position_id: string;
+  condition_option_id: string;
+  role: "A" | "B";
 }
 
 // --- Helpers ---
@@ -56,6 +71,7 @@ export async function loadTaxonomy(): Promise<{
   conditionGroups: ConditionGroup[];
   actions: Action[];
   positionConditions: Record<string, string[]>;
+  positionRequirements: Record<string, PositionRequirement[]>;
 } | null> {
   const userId = await getUserId();
   const supabase = createSupabaseServer();
@@ -114,7 +130,21 @@ export async function loadTaxonomy(): Promise<{
     positionConditions[key].push(row.condition_option_id);
   }
 
-  return { positions: posResult.data as Position[], conditionGroups, actions: actionsResult.data as Action[], positionConditions };
+  // Load position requirements
+  const { data: reqRows, error: reqError } = await supabase
+    .from("position_requirements")
+    .select("*");
+  if (reqError) {
+    console.error("Failed to load position_requirements:", reqError);
+    return null;
+  }
+  const positionRequirements: Record<string, PositionRequirement[]> = {};
+  for (const row of reqRows as PositionRequirement[]) {
+    if (!positionRequirements[row.position_id]) positionRequirements[row.position_id] = [];
+    positionRequirements[row.position_id].push(row);
+  }
+
+  return { positions: posResult.data as Position[], conditionGroups, actions: actionsResult.data as Action[], positionConditions, positionRequirements };
 }
 
 // --- Positions CRUD ---
@@ -285,7 +315,7 @@ export async function addAction(name: string, description: string, giNogi: "" | 
   return data;
 }
 
-export async function updateAction(id: string, updates: { name?: string; description?: string; gi_nogi?: "" | "gi" | "nogi"; is_public?: boolean }): Promise<boolean> {
+export async function updateAction(id: string, updates: { name?: string; description?: string; gi_nogi?: "" | "gi" | "nogi"; is_public?: boolean; required_conditions?: ConditionRef[]; forbidden_conditions?: ConditionRef[] }): Promise<boolean> {
   const supabase = createSupabaseServer();
   const { error } = await supabase.from("actions").update(updates).eq("id", id);
   if (error) { console.error("Failed to update action:", error); return false; }
@@ -296,6 +326,32 @@ export async function deleteAction(id: string): Promise<boolean> {
   const supabase = createSupabaseServer();
   const { error } = await supabase.from("actions").delete().eq("id", id);
   if (error) { console.error("Failed to delete action:", error); return false; }
+  return true;
+}
+
+// --- Position Requirements ---
+
+export async function setPositionRequirement(
+  positionId: string,
+  conditionOptionId: string,
+  role: "A" | "B",
+  required: boolean,
+): Promise<boolean> {
+  const supabase = createSupabaseServer();
+  const { error: delError } = await supabase
+    .from("position_requirements")
+    .delete()
+    .eq("position_id", positionId)
+    .eq("condition_option_id", conditionOptionId)
+    .eq("role", role);
+  if (delError) return false;
+
+  if (required) {
+    const { error } = await supabase
+      .from("position_requirements")
+      .insert({ position_id: positionId, condition_option_id: conditionOptionId, role });
+    if (error) return false;
+  }
   return true;
 }
 
