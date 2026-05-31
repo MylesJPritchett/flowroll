@@ -93,6 +93,12 @@ export default function Workspace() {
     setEdges((prev) => prev.filter((e) => e.source_node_id !== id && e.target_node_id !== id));
   }, []);
 
+  const refreshTaxonomy = useCallback(() => {
+    loadTaxonomy().then((data) => {
+      if (data) setTaxonomy(data);
+    });
+  }, []);
+
   if (loading || !taxonomy) {
     return (
       <div className="absolute inset-0 flex items-center justify-center">
@@ -140,6 +146,7 @@ export default function Workspace() {
             onAddAction={addActionNode}
             onUpdateAction={updateActionNode}
             onDeleteAction={deleteNode}
+            onTaxonomyChange={refreshTaxonomy}
           />
         ) : (
           <GraphEditor
@@ -148,6 +155,7 @@ export default function Workspace() {
             taxonomy={taxonomy}
             onNodesChange={setNodes}
             onEdgesChange={setEdges}
+            onTaxonomyChange={refreshTaxonomy}
           />
         )}
       </div>

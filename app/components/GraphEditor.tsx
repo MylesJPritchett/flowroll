@@ -167,9 +167,10 @@ interface GraphEditorProps {
   taxonomy: Taxonomy;
   onNodesChange: (nodes: GraphNode[]) => void;
   onEdgesChange: (edges: GraphEdge[]) => void;
+  onTaxonomyChange?: () => void;
 }
 
-function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, onNodesChange: emitNodes, onEdgesChange: emitEdges }: GraphEditorProps) {
+function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, onNodesChange: emitNodes, onEdgesChange: emitEdges, onTaxonomyChange }: GraphEditorProps) {
   const { screenToFlowPosition } = useReactFlow();
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -457,6 +458,7 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, onNodesCha
           onUpdate={updateStateNode}
           onDelete={deleteNode}
           onClose={() => { setSelectedStateNode(null); setFocusTitle(false); }}
+          onTaxonomyChange={onTaxonomyChange}
         />
       )}
 
@@ -469,6 +471,7 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, onNodesCha
           onUpdate={updateActionNode}
           onDelete={deleteNode}
           onClose={() => setSelectedActionNode(null)}
+          onTaxonomyChange={onTaxonomyChange}
         />
       )}
     </div>
