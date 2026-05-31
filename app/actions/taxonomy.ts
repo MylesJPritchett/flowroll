@@ -1,10 +1,17 @@
 "use server";
 
+import { auth } from "@/auth";
 import { createSupabaseServer } from "@/lib/supabase";
 
 // --- Types ---
 
-export interface Position {
+interface OwnershipFields {
+  created_by: string | null;
+  is_official: boolean;
+  is_public: boolean;
+}
+
+export interface Position extends OwnershipFields {
   id: string;
   name: string;
   role_a: string;
@@ -12,7 +19,7 @@ export interface Position {
   sort_order: number;
 }
 
-export interface ConditionOption {
+export interface ConditionOption extends OwnershipFields {
   id: string;
   group_id: string;
   label: string;
@@ -20,19 +27,26 @@ export interface ConditionOption {
   sort_order: number;
 }
 
-export interface ConditionGroup {
+export interface ConditionGroup extends OwnershipFields {
   id: string;
   name: string;
   sort_order: number;
   options: ConditionOption[];
 }
 
-export interface Action {
+export interface Action extends OwnershipFields {
   id: string;
   name: string;
   description: string;
   gi_nogi: "" | "gi" | "nogi";
   sort_order: number;
+}
+
+// --- Helpers ---
+
+async function getUserId(): Promise<string | null> {
+  const session = await auth();
+  return session?.user?.email ?? null;
 }
 
 // --- Load ---
@@ -43,13 +57,19 @@ export async function loadTaxonomy(): Promise<{
   actions: Action[];
   positionConditions: Record<string, string[]>;
 } | null> {
+  const userId = await getUserId();
   const supabase = createSupabaseServer();
 
+  // Load all visible items: official OR created by user OR public
+  const orFilter = userId
+    ? `is_official.eq.true,created_by.eq.${userId},is_public.eq.true`
+    : "is_official.eq.true,is_public.eq.true";
+
   const [posResult, groupsResult, optionsResult, actionsResult] = await Promise.all([
-    supabase.from("positions").select("*").order("sort_order"),
-    supabase.from("condition_groups").select("*").order("sort_order"),
-    supabase.from("condition_options").select("*").order("sort_order"),
-    supabase.from("actions").select("*").order("sort_order"),
+    supabase.from("positions").select("*").or(orFilter).order("sort_order"),
+    supabase.from("condition_groups").select("*").or(orFilter).order("sort_order"),
+    supabase.from("condition_options").select("*").or(orFilter).order("sort_order"),
+    supabase.from("actions").select("*").or(orFilter).order("sort_order"),
   ]);
 
   if (posResult.error || groupsResult.error || optionsResult.error || actionsResult.error) {
@@ -57,7 +77,7 @@ export async function loadTaxonomy(): Promise<{
     return null;
   }
 
-  // Paginate position_conditions to avoid the 1000-row default cap
+  // Paginate position_conditions
   const allPcRows: { position_id: string; condition_option_id: string; role: string }[] = [];
   let from = 0;
   const pageSize = 1000;
@@ -76,18 +96,17 @@ export async function loadTaxonomy(): Promise<{
   }
 
   const optionsByGroup = new Map<string, ConditionOption[]>();
-  for (const opt of optionsResult.data) {
+  for (const opt of optionsResult.data as ConditionOption[]) {
     const list = optionsByGroup.get(opt.group_id) ?? [];
     list.push(opt);
     optionsByGroup.set(opt.group_id, list);
   }
 
-  const conditionGroups: ConditionGroup[] = groupsResult.data.map((g) => ({
+  const conditionGroups: ConditionGroup[] = (groupsResult.data as ConditionGroup[]).map((g) => ({
     ...g,
     options: optionsByGroup.get(g.id) ?? [],
   }));
 
-  // Build position+role → allowed option ids
   const positionConditions: Record<string, string[]> = {};
   for (const row of allPcRows) {
     const key = `${row.position_id}:${row.role}`;
@@ -95,19 +114,20 @@ export async function loadTaxonomy(): Promise<{
     positionConditions[key].push(row.condition_option_id);
   }
 
-  return { positions: posResult.data, conditionGroups, actions: actionsResult.data, positionConditions };
+  return { positions: posResult.data as Position[], conditionGroups, actions: actionsResult.data as Action[], positionConditions };
 }
 
 // --- Positions CRUD ---
 
 export async function addPosition(name: string, roleA: string, roleB: string): Promise<Position | null> {
+  const userId = await getUserId();
   const supabase = createSupabaseServer();
   const { data: maxRow } = await supabase.from("positions").select("sort_order").order("sort_order", { ascending: false }).limit(1).single();
   const sortOrder = (maxRow?.sort_order ?? -1) + 1;
 
   const { data, error } = await supabase
     .from("positions")
-    .insert({ name, role_a: roleA, role_b: roleB, sort_order: sortOrder })
+    .insert({ name, role_a: roleA, role_b: roleB, sort_order: sortOrder, created_by: userId, is_official: false, is_public: true })
     .select()
     .single();
 
@@ -129,7 +149,7 @@ export async function addPosition(name: string, roleA: string, roleB: string): P
   return data;
 }
 
-export async function updatePosition(id: string, updates: { name?: string; role_a?: string; role_b?: string }): Promise<boolean> {
+export async function updatePosition(id: string, updates: { name?: string; role_a?: string; role_b?: string; is_public?: boolean }): Promise<boolean> {
   const supabase = createSupabaseServer();
   const { error } = await supabase.from("positions").update(updates).eq("id", id);
   if (error) { console.error("Failed to update position:", error); return false; }
@@ -146,13 +166,14 @@ export async function deletePosition(id: string): Promise<boolean> {
 // --- Condition Groups CRUD ---
 
 export async function addConditionGroup(name: string): Promise<ConditionGroup | null> {
+  const userId = await getUserId();
   const supabase = createSupabaseServer();
   const { data: maxRow } = await supabase.from("condition_groups").select("sort_order").order("sort_order", { ascending: false }).limit(1).single();
   const sortOrder = (maxRow?.sort_order ?? -1) + 1;
 
   const { data, error } = await supabase
     .from("condition_groups")
-    .insert({ name, sort_order: sortOrder })
+    .insert({ name, sort_order: sortOrder, created_by: userId, is_official: false, is_public: true })
     .select()
     .single();
 
@@ -160,7 +181,7 @@ export async function addConditionGroup(name: string): Promise<ConditionGroup | 
   return { ...data, options: [] };
 }
 
-export async function updateConditionGroup(id: string, updates: { name?: string }): Promise<boolean> {
+export async function updateConditionGroup(id: string, updates: { name?: string; is_public?: boolean }): Promise<boolean> {
   const supabase = createSupabaseServer();
   const { error } = await supabase.from("condition_groups").update(updates).eq("id", id);
   if (error) { console.error("Failed to update condition group:", error); return false; }
@@ -169,7 +190,6 @@ export async function updateConditionGroup(id: string, updates: { name?: string 
 
 export async function deleteConditionGroup(id: string): Promise<boolean> {
   const supabase = createSupabaseServer();
-  // Options cascade-delete via FK
   const { error } = await supabase.from("condition_groups").delete().eq("id", id);
   if (error) { console.error("Failed to delete condition group:", error); return false; }
   return true;
@@ -178,13 +198,14 @@ export async function deleteConditionGroup(id: string): Promise<boolean> {
 // --- Condition Options CRUD ---
 
 export async function addConditionOption(groupId: string, label: string, giOnly: boolean): Promise<ConditionOption | null> {
+  const userId = await getUserId();
   const supabase = createSupabaseServer();
   const { data: maxRow } = await supabase.from("condition_options").select("sort_order").eq("group_id", groupId).order("sort_order", { ascending: false }).limit(1).single();
   const sortOrder = (maxRow?.sort_order ?? -1) + 1;
 
   const { data, error } = await supabase
     .from("condition_options")
-    .insert({ group_id: groupId, label, gi_only: giOnly, sort_order: sortOrder })
+    .insert({ group_id: groupId, label, gi_only: giOnly, sort_order: sortOrder, created_by: userId, is_official: false, is_public: true })
     .select()
     .single();
 
@@ -206,7 +227,7 @@ export async function addConditionOption(groupId: string, label: string, giOnly:
   return data;
 }
 
-export async function updateConditionOption(id: string, updates: { label?: string; gi_only?: boolean }): Promise<boolean> {
+export async function updateConditionOption(id: string, updates: { label?: string; gi_only?: boolean; is_public?: boolean }): Promise<boolean> {
   const supabase = createSupabaseServer();
   const { error } = await supabase.from("condition_options").update(updates).eq("id", id);
   if (error) { console.error("Failed to update condition option:", error); return false; }
@@ -249,13 +270,14 @@ export async function setPositionCondition(
 // --- Actions CRUD ---
 
 export async function addAction(name: string, description: string, giNogi: "" | "gi" | "nogi"): Promise<Action | null> {
+  const userId = await getUserId();
   const supabase = createSupabaseServer();
   const { data: maxRow } = await supabase.from("actions").select("sort_order").order("sort_order", { ascending: false }).limit(1).single();
   const sortOrder = (maxRow?.sort_order ?? -1) + 1;
 
   const { data, error } = await supabase
     .from("actions")
-    .insert({ name, description, gi_nogi: giNogi, sort_order: sortOrder })
+    .insert({ name, description, gi_nogi: giNogi, sort_order: sortOrder, created_by: userId, is_official: false, is_public: true })
     .select()
     .single();
 
@@ -263,7 +285,7 @@ export async function addAction(name: string, description: string, giNogi: "" | 
   return data;
 }
 
-export async function updateAction(id: string, updates: { name?: string; description?: string; gi_nogi?: "" | "gi" | "nogi" }): Promise<boolean> {
+export async function updateAction(id: string, updates: { name?: string; description?: string; gi_nogi?: "" | "gi" | "nogi"; is_public?: boolean }): Promise<boolean> {
   const supabase = createSupabaseServer();
   const { error } = await supabase.from("actions").update(updates).eq("id", id);
   if (error) { console.error("Failed to update action:", error); return false; }
@@ -274,5 +296,18 @@ export async function deleteAction(id: string): Promise<boolean> {
   const supabase = createSupabaseServer();
   const { error } = await supabase.from("actions").delete().eq("id", id);
   if (error) { console.error("Failed to delete action:", error); return false; }
+  return true;
+}
+
+// --- Admin: Toggle Official ---
+
+export async function setOfficial(
+  table: "positions" | "condition_groups" | "condition_options" | "actions",
+  id: string,
+  isOfficial: boolean,
+): Promise<boolean> {
+  const supabase = createSupabaseServer();
+  const { error } = await supabase.from(table).update({ is_official: isOfficial }).eq("id", id);
+  if (error) { console.error("Failed to set official:", error); return false; }
   return true;
 }

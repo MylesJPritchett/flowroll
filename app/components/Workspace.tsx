@@ -1,11 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { loadGraph, saveGraph, type GraphNode, type GraphEdge, type GraphStateNode } from "../actions/graph";
+import { loadGraph, saveGraph, type GraphNode, type GraphEdge, type GraphStateNode, type GraphActionNode } from "../actions/graph";
 import { loadTaxonomy } from "../actions/taxonomy";
-import type { Position, ConditionGroup } from "../actions/taxonomy";
 import GraphEditor from "./GraphEditor";
-import StateListView from "./StateListView";
+import ListView from "./StateListView";
 
 type View = "list" | "graph";
 
@@ -22,7 +21,6 @@ export default function Workspace() {
   const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const initialized = useRef(false);
 
-  // Load on mount
   useEffect(() => {
     Promise.all([loadGraph(), loadTaxonomy()]).then(([graphData, taxData]) => {
       if (graphData) {
@@ -37,7 +35,6 @@ export default function Workspace() {
     });
   }, []);
 
-  // Debounced save
   const scheduleSave = useCallback((currentNodes: GraphNode[], currentEdges: GraphEdge[]) => {
     if (!initialized.current) return;
     if (saveTimeout.current) clearTimeout(saveTimeout.current);
@@ -48,16 +45,11 @@ export default function Workspace() {
     }, 1500);
   }, []);
 
-  const nodesRef = useRef(nodes);
-  const edgesRef = useRef(edges);
-  nodesRef.current = nodes;
-  edgesRef.current = edges;
-
   useEffect(() => {
     scheduleSave(nodes, edges);
   }, [nodes, edges, scheduleSave]);
 
-  // --- State node operations (for list view) ---
+  // --- State node operations ---
   const addStateNode = useCallback(() => {
     const id = `${Date.now()}`;
     const newNode: GraphStateNode = {
@@ -77,6 +69,25 @@ export default function Workspace() {
     setNodes((prev) => prev.map((n) => (n.id === updated.id ? updated : n)));
   }, []);
 
+  // --- Action node operations ---
+  const addActionNode = useCallback(() => {
+    const id = `${Date.now()}`;
+    const newNode: GraphActionNode = {
+      id,
+      type: "action",
+      action_id: "",
+      action_name: "",
+      actor: "A",
+      position_x: Math.random() * 400 + 100,
+      position_y: Math.random() * 400 + 100,
+    };
+    setNodes((prev) => [...prev, newNode]);
+  }, []);
+
+  const updateActionNode = useCallback((updated: GraphActionNode) => {
+    setNodes((prev) => prev.map((n) => (n.id === updated.id ? updated : n)));
+  }, []);
+
   const deleteNode = useCallback((id: string) => {
     setNodes((prev) => prev.filter((n) => n.id !== id));
     setEdges((prev) => prev.filter((e) => e.source_node_id !== id && e.target_node_id !== id));
@@ -92,7 +103,6 @@ export default function Workspace() {
 
   return (
     <div className="absolute inset-0 flex flex-col">
-      {/* View toggle */}
       <div className="flex items-center gap-1 border-b border-zinc-800 bg-zinc-950 px-4 py-1.5">
         {(["list", "graph"] as const).map((v) => (
           <button
@@ -104,29 +114,32 @@ export default function Workspace() {
                 : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"
             }`}
           >
-            {v === "list" ? "States" : "Graph"}
+            {v === "list" ? "List" : "Graph"}
           </button>
         ))}
         <a
-          href="/admin"
+          href="/database"
           className="ml-auto rounded-md px-3 py-1 text-xs font-medium text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
         >
-          Admin
+          Database
         </a>
         {saving && (
           <span className="text-[10px] text-zinc-500">Saving...</span>
         )}
       </div>
 
-      {/* Content */}
       <div className="relative flex-1">
         {view === "list" ? (
-          <StateListView
-            nodes={nodes.filter((n): n is GraphStateNode => n.type === "state")}
+          <ListView
+            stateNodes={nodes.filter((n): n is GraphStateNode => n.type === "state")}
+            actionNodes={nodes.filter((n): n is GraphActionNode => n.type === "action")}
             taxonomy={taxonomy}
-            onAdd={addStateNode}
-            onUpdate={updateStateNode}
-            onDelete={deleteNode}
+            onAddState={addStateNode}
+            onUpdateState={updateStateNode}
+            onDeleteState={deleteNode}
+            onAddAction={addActionNode}
+            onUpdateAction={updateActionNode}
+            onDeleteAction={deleteNode}
           />
         ) : (
           <GraphEditor
