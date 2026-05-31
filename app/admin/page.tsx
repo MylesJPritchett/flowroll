@@ -1,9 +1,15 @@
 import { auth } from "@/auth";
+import { redirect } from "next/navigation";
+import { isAdmin } from "../actions/admin";
 import DatabaseView from "../components/DatabaseView";
 
 export default async function AdminPage() {
   const session = await auth();
   const userId = session?.user?.email ?? "";
+
+  if (!(await isAdmin())) {
+    redirect("/database");
+  }
 
   return (
     <div className="flex h-full flex-1 flex-col bg-zinc-950">

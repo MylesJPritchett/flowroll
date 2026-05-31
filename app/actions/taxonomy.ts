@@ -364,6 +364,9 @@ export async function setOfficial(
   id: string,
   isOfficial: boolean,
 ): Promise<boolean> {
+  // Admin check
+  const { isAdmin } = await import("./admin");
+  if (!(await isAdmin())) return false;
   const supabase = createSupabaseServer();
   const { error } = await supabase.from(table).update({ is_official: isOfficial }).eq("id", id);
   if (error) { console.error("Failed to set official:", error); return false; }
