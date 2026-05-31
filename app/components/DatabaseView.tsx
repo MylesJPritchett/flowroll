@@ -43,9 +43,7 @@ export default function DatabaseView({ mode, userId }: DatabaseViewProps) {
   const [pcMap, setPcMap] = useState<Record<string, Set<string>>>({});
   const [loading, setLoading] = useState(true);
 
-  const tabs = mode === "admin"
-    ? (["positions", "conditions", "actions", "mappings"] as const)
-    : (["positions", "conditions", "actions"] as const);
+  const tabs = ["positions", "conditions", "actions", "mappings"] as const;
   type Tab = (typeof tabs)[number];
   const [activeTab, setActiveTab] = useState<Tab>("positions");
 
