@@ -34,10 +34,12 @@ export interface ConditionGroup extends OwnershipFields {
   options: ConditionOption[];
 }
 
+export type ConditionRefRole = "actor" | "opponent";
+
 export interface ConditionRef {
   groupId: string;
   value: string;
-  role: "A" | "B";
+  role: ConditionRefRole;
 }
 
 export interface Action extends OwnershipFields {

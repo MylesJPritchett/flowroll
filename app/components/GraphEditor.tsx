@@ -23,8 +23,7 @@ import ActionNode from "./ActionNode";
 import NodeEditor from "./NodeEditor";
 import ActionNodeEditor from "./ActionNodeEditor";
 import type { GraphNode, GraphEdge, GraphStateNode, GraphActionNode } from "../actions/graph";
-import type { Position as DBPosition } from "../actions/taxonomy";
-import { getRoleLabels } from "../concepts";
+import { getRoleLabels, resolveConditionRole } from "../concepts";
 import type { StateCondition, Taxonomy } from "../concepts";
 import type { GiNogi } from "../actions/graph";
 
@@ -64,12 +63,15 @@ function getActionWarnings(node: GraphActionNode, sourceState: GraphStateNode | 
   const warnings: string[] = [];
   const action = taxonomy.actions.find((a) => a.id === node.action_id);
   if (!action || !sourceState) return warnings;
+  const actor = node.actor;
   for (const req of action.required_conditions) {
-    const has = sourceState.conditions.some((c) => c.groupId === req.groupId && c.value === req.value && c.role === req.role);
+    const resolvedRole = resolveConditionRole(req.role, actor);
+    const has = sourceState.conditions.some((c) => c.groupId === req.groupId && c.value === req.value && c.role === resolvedRole);
     if (!has) warnings.push(`Requires: ${req.value}`);
   }
   for (const forb of action.forbidden_conditions) {
-    const has = sourceState.conditions.some((c) => c.groupId === forb.groupId && c.value === forb.value && c.role === forb.role);
+    const resolvedRole = resolveConditionRole(forb.role, actor);
+    const has = sourceState.conditions.some((c) => c.groupId === forb.groupId && c.value === forb.value && c.role === resolvedRole);
     if (has) warnings.push(`Forbidden: ${forb.value}`);
   }
   return warnings;
@@ -203,6 +205,7 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, onNodesCha
       if (!actionNode || actionNode.type !== "action") return;
       const actionData = actionNode.data as Record<string, unknown>;
       const actionId = actionData.action_id as string;
+      const actor = (actionData.actor as "A" | "B") ?? "A";
       const action = taxonomy.actions.find((a) => a.id === actionId);
       if (!action) return;
       if (action.adds_conditions.length === 0 && action.removes_conditions.length === 0) return;
@@ -213,15 +216,17 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, onNodesCha
           const d = n.data as Record<string, unknown>;
           let conditions = (d.conditions as StateCondition[]) ?? [];
 
-          // Remove conditions
+          // Remove conditions (resolve actor/opponent → A/B)
           for (const rem of action.removes_conditions) {
-            conditions = conditions.filter((c) => !(c.groupId === rem.groupId && c.value === rem.value && c.role === rem.role));
+            const resolvedRole = resolveConditionRole(rem.role, actor);
+            conditions = conditions.filter((c) => !(c.groupId === rem.groupId && c.value === rem.value && c.role === resolvedRole));
           }
 
-          // Add conditions (replace within same group+role since exclusive)
+          // Add conditions (resolve actor/opponent → A/B, replace within same group+role since exclusive)
           for (const add of action.adds_conditions) {
-            conditions = conditions.filter((c) => !(c.groupId === add.groupId && c.role === add.role));
-            conditions.push({ groupId: add.groupId, value: add.value, role: add.role });
+            const resolvedRole = resolveConditionRole(add.role, actor);
+            conditions = conditions.filter((c) => !(c.groupId === add.groupId && c.role === resolvedRole));
+            conditions.push({ groupId: add.groupId, value: add.value, role: resolvedRole });
           }
 
           return { ...n, data: { ...d, conditions } };
@@ -286,22 +291,39 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, onNodesCha
       const edgeId = `e${nodeId}`;
 
       if (sourceType === "action") {
-        // From action → create state, pre-apply effects
+        // From action → create state, inheriting from source state + applying effects
         const actionData = sourceNode?.data as Record<string, unknown> | undefined;
         const actionId = actionData?.action_id as string | undefined;
+        const actor = (actionData?.actor as "A" | "B") ?? "A";
         const action = actionId ? taxonomy.actions.find((a) => a.id === actionId) : undefined;
-        let initialConditions: StateCondition[] = [];
+
+        // Find the state feeding into this action node
+        const inEdge = edges.find((e) => e.target === sourceId);
+        const parentState = inEdge ? nodes.find((n) => n.id === inEdge.source && n.type === "state") : undefined;
+        const parentData = parentState?.data as Record<string, unknown> | undefined;
+
+        let initialConditions: StateCondition[] = parentData ? [...((parentData.conditions as StateCondition[]) ?? [])] : [];
+        const inheritedName = (parentData?.position_name as string) ?? "New State";
+        const inheritedGiNogi = (parentData?.giNogi as GiNogi) ?? "";
+
         if (action) {
+          // Remove conditions first (resolve actor/opponent → A/B)
+          for (const rem of action.removes_conditions) {
+            const resolvedRole = resolveConditionRole(rem.role, actor);
+            initialConditions = initialConditions.filter((c) => !(c.groupId === rem.groupId && c.value === rem.value && c.role === resolvedRole));
+          }
+          // Then add conditions (resolve actor/opponent → A/B, replace within same group+role since exclusive)
           for (const add of action.adds_conditions) {
-            initialConditions = initialConditions.filter((c) => !(c.groupId === add.groupId && c.role === add.role));
-            initialConditions.push({ groupId: add.groupId, value: add.value, role: add.role });
+            const resolvedRole = resolveConditionRole(add.role, actor);
+            initialConditions = initialConditions.filter((c) => !(c.groupId === add.groupId && c.role === resolvedRole));
+            initialConditions.push({ groupId: add.groupId, value: add.value, role: resolvedRole });
           }
         }
         const newNode: Node = {
           id: nodeId,
           type: "state",
           position,
-          data: { position_name: "New State", conditions: initialConditions, giNogi: "", description: "" },
+          data: { position_name: inheritedName, conditions: initialConditions, giNogi: inheritedGiNogi, description: "" },
         };
         setNodes((nds) => [...nds, newNode]);
         setEdges((eds) => [...eds, { id: edgeId, source: sourceId, target: nodeId, ...edgeStyle } as Edge]);

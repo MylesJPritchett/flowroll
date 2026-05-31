@@ -1,7 +1,7 @@
-import type { Position, ConditionGroup, ConditionOption, Action, PositionRequirement, ConditionRef } from "./actions/taxonomy";
+import type { Position, ConditionGroup, ConditionOption, Action, PositionRequirement, ConditionRef, ConditionRefRole } from "./actions/taxonomy";
 
 // Re-export taxonomy types for convenience
-export type { Position, ConditionGroup, ConditionOption, Action, PositionRequirement, ConditionRef };
+export type { Position, ConditionGroup, ConditionOption, Action, PositionRequirement, ConditionRef, ConditionRefRole };
 
 export interface Taxonomy {
   positions: Position[];
@@ -12,6 +12,12 @@ export interface Taxonomy {
 }
 
 // --- Helpers ---
+
+/** Resolve a ConditionRef role to the concrete A/B role based on who is performing the action. */
+export function resolveConditionRole(refRole: ConditionRefRole, actor: "A" | "B"): "A" | "B" {
+  if (refRole === "actor") return actor;
+  return actor === "A" ? "B" : "A";
+}
 
 export function getRoleLabels(positionName: string, positions: Position[]): { roleA: string; roleB: string } {
   const pos = positions.find((p) => p.name === positionName);

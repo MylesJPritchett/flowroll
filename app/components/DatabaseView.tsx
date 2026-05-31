@@ -24,6 +24,7 @@ import {
   type PositionRequirement,
   type ConditionRef,
 } from "../actions/taxonomy";
+import type { ConditionRefRole } from "../concepts";
 
 function OfficialBadge() {
   return <span className="text-green-400 text-[10px]" title="Official">&#10003;</span>;
@@ -549,16 +550,21 @@ function ActionRowWithPrereqs({
     return [...list, ref];
   };
 
-  const isInList = (list: ConditionRef[], groupId: string, value: string, role: "A" | "B") =>
+  const isInList = (list: ConditionRef[], groupId: string, value: string, role: ConditionRefRole) =>
     list.some((r) => r.groupId === groupId && r.value === value && r.role === role);
+
+  const conditionRefRoles: { value: ConditionRefRole; label: string }[] = [
+    { value: "actor", label: "Actor (person doing the move)" },
+    { value: "opponent", label: "Opponent (person move is done to)" },
+  ];
 
   const renderConditionPicker = (label: string, list: ConditionRef[], color: string, onToggle: (ref: ConditionRef) => void) => (
     <div>
       <div className="text-[10px] font-medium text-zinc-400 mb-1">{label}</div>
       <div className="space-y-2">
-        {(["A", "B"] as const).map((role) => (
+        {conditionRefRoles.map(({ value: role, label: roleLabel }) => (
           <div key={role}>
-            <div className="mb-0.5 text-[9px] font-semibold text-zinc-300">Role {role}</div>
+            <div className="mb-0.5 text-[9px] font-semibold text-zinc-300">{roleLabel}</div>
             <div className="space-y-1 ml-1">
               {groups.map((group) => {
                 if (group.options.length === 0) return null;
