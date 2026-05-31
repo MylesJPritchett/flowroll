@@ -2,21 +2,28 @@
 
 import { auth } from "@/auth";
 import { createSupabaseServer } from "@/lib/supabase";
+import type { StateCondition } from "../concepts";
 
 export interface GraphNode {
   id: string;
-  label: string;
+  position_name: string;
+  conditions: StateCondition[];
+  giNogi: GiNogi;
   description: string;
   position_x: number;
   position_y: number;
-  metadata?: Record<string, unknown>;
 }
+
+export type GiNogi = "gi" | "nogi" | "";
 
 export interface GraphEdge {
   id: string;
   source_node_id: string;
   target_node_id: string;
-  relationship: string;
+  label: string;
+  actor: "A" | "B";
+  giNogi: GiNogi;
+  description: string;
 }
 
 export async function loadGraph(): Promise<{
@@ -36,7 +43,7 @@ export async function loadGraph(): Promise<{
       .eq("user_id", userId),
     supabase
       .from("graph_edges")
-      .select("id, source_node_id, target_node_id, relationship")
+      .select("id, source_node_id, target_node_id, relationship, metadata")
       .eq("user_id", userId),
   ]);
 
@@ -45,7 +52,27 @@ export async function loadGraph(): Promise<{
     return null;
   }
 
-  return { nodes: nodesResult.data, edges: edgesResult.data };
+  const nodes: GraphNode[] = nodesResult.data.map((row: Record<string, unknown>) => ({
+    id: row.id as string,
+    position_name: (row.label as string) ?? "New State",
+    description: (row.description as string) ?? "",
+    position_x: row.position_x as number,
+    position_y: row.position_y as number,
+    conditions: ((row.metadata as Record<string, unknown>)?.conditions as StateCondition[]) ?? [],
+    giNogi: ((row.metadata as Record<string, unknown>)?.giNogi as GiNogi) ?? "",
+  }));
+
+  const edges: GraphEdge[] = edgesResult.data.map((row: Record<string, unknown>) => ({
+    id: row.id as string,
+    source_node_id: row.source_node_id as string,
+    target_node_id: row.target_node_id as string,
+    label: (row.relationship as string) ?? "",
+    actor: ((row.metadata as Record<string, unknown>)?.actor as "A" | "B") ?? "A",
+    giNogi: ((row.metadata as Record<string, unknown>)?.giNogi as GiNogi) ?? "",
+    description: ((row.metadata as Record<string, unknown>)?.description as string) ?? "",
+  }));
+
+  return { nodes, edges };
 }
 
 export async function saveGraph(
@@ -58,7 +85,6 @@ export async function saveGraph(
   const supabase = createSupabaseServer();
   const userId = session.user.email;
 
-  // Delete existing data and replace with current state
   const [deleteNodes, deleteEdges] = await Promise.all([
     supabase.from("graph_nodes").delete().eq("user_id", userId),
     supabase.from("graph_edges").delete().eq("user_id", userId),
@@ -74,11 +100,11 @@ export async function saveGraph(
       nodes.map((n) => ({
         id: n.id,
         user_id: userId,
-        label: n.label,
+        label: n.position_name,
         description: n.description,
         position_x: n.position_x,
         position_y: n.position_y,
-        metadata: n.metadata ?? {},
+        metadata: { conditions: n.conditions, giNogi: n.giNogi },
       })),
     );
     if (error) {
@@ -94,7 +120,8 @@ export async function saveGraph(
         user_id: userId,
         source_node_id: e.source_node_id,
         target_node_id: e.target_node_id,
-        relationship: e.relationship,
+        relationship: e.label,
+        metadata: { actor: e.actor, giNogi: e.giNogi, description: e.description },
       })),
     );
     if (error) {

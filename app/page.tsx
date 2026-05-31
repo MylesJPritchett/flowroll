@@ -1,6 +1,6 @@
 import { auth, signOut } from "@/auth";
 import Image from "next/image";
-import GraphEditor from "./components/GraphEditor";
+import Workspace from "./components/Workspace";
 
 export default async function Home() {
   const session = await auth();
@@ -44,7 +44,7 @@ export default async function Home() {
       </header>
 
       <div className="relative flex-1">
-        <GraphEditor />
+        <Workspace />
       </div>
     </div>
   );

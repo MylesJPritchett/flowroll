@@ -2,32 +2,36 @@
 
 import { useState, useEffect, useRef } from "react";
 import type { Node } from "@xyflow/react";
-import type { Player } from "./BJJNode";
-import { BJJ_CONCEPTS } from "../concepts";
+import { getRoleLabels, getFilteredOptions, getAllowedOptionIds } from "../concepts";
+import type { StateCondition } from "../concepts";
+import type { GiNogi } from "../actions/graph";
+import type { Taxonomy } from "../concepts";
 
 interface NodeEditorProps {
   node: Node;
+  taxonomy: Taxonomy;
   focusTitle?: boolean;
   position: { x: number; y: number };
-  onUpdate: (id: string, data: { label: string; description: string; player: Player; tags: string[] }) => void;
+  onUpdate: (id: string, data: { position_name: string; conditions: StateCondition[]; giNogi: GiNogi; description: string }) => void;
   onDelete: (id: string) => void;
   onClose: () => void;
 }
 
-export default function NodeEditor({ node, focusTitle, position, onUpdate, onDelete, onClose }: NodeEditorProps) {
+export default function NodeEditor({ node, taxonomy, focusTitle, position, onUpdate, onDelete, onClose }: NodeEditorProps) {
   const data = node.data as Record<string, unknown>;
-  const [label, setLabel] = useState((data.label as string) ?? "");
+  const [positionName, setPositionName] = useState((data.position_name as string) ?? "New State");
+  const [conditions, setConditions] = useState<StateCondition[]>((data.conditions as StateCondition[]) ?? []);
+  const [giNogi, setGiNogi] = useState<GiNogi>((data.giNogi as GiNogi) ?? "");
   const [description, setDescription] = useState((data.description as string) ?? "");
-  const [player, setPlayer] = useState<Player>((data.player as Player) ?? "neutral");
-  const [tags, setTags] = useState<string[]>((data.tags as string[]) ?? []);
+  const [showPositionSuggestions, setShowPositionSuggestions] = useState(false);
   const titleRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const d = node.data as Record<string, unknown>;
-    setLabel((d.label as string) ?? "");
+    setPositionName((d.position_name as string) ?? "New State");
+    setConditions((d.conditions as StateCondition[]) ?? []);
+    setGiNogi((d.giNogi as GiNogi) ?? "");
     setDescription((d.description as string) ?? "");
-    setPlayer((d.player as Player) ?? "neutral");
-    setTags((d.tags as string[]) ?? []);
   }, [node.id, node.data]);
 
   useEffect(() => {
@@ -37,14 +41,39 @@ export default function NodeEditor({ node, focusTitle, position, onUpdate, onDel
     }
   }, [focusTitle, node.id]);
 
+  const roles = getRoleLabels(positionName, taxonomy.positions);
+
+  const toggleCondition = (groupId: string, value: string, role: "A" | "B") => {
+    const existing = conditions.find((c) => c.groupId === groupId && c.role === role);
+    let next: StateCondition[];
+    if (existing?.value === value) {
+      // Deselect
+      next = conditions.filter((c) => !(c.groupId === groupId && c.role === role));
+    } else {
+      // Replace within group+role (exclusive)
+      next = [...conditions.filter((c) => !(c.groupId === groupId && c.role === role)), { groupId, value, role }];
+    }
+    setConditions(next);
+    onUpdate(node.id, { position_name: positionName, conditions: next, giNogi, description });
+  };
+
+  const getActiveValue = (groupId: string, role: "A" | "B") => {
+    return conditions.find((c) => c.groupId === groupId && c.role === role)?.value;
+  };
+
+  const isDefault = positionName === "New State";
+  const filteredPositions = isDefault
+    ? taxonomy.positions
+    : taxonomy.positions.filter((p) => p.name.toLowerCase().includes(positionName.toLowerCase()));
+
   return (
     <div
       style={{ left: position.x, top: position.y }}
-      className="absolute z-10 w-72 rounded-lg border border-zinc-200 bg-white p-4 shadow-lg dark:border-zinc-700 dark:bg-zinc-800"
+      className="absolute z-10 w-80 rounded-lg border border-zinc-200 bg-white p-4 shadow-lg dark:border-zinc-700 dark:bg-zinc-800 max-h-[85vh] overflow-y-auto"
     >
       <div className="mb-3 flex items-center justify-between">
         <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-          Edit Node
+          Edit State
         </h3>
         <button
           onClick={onClose}
@@ -55,70 +84,75 @@ export default function NodeEditor({ node, focusTitle, position, onUpdate, onDel
       </div>
 
       <div className="space-y-3">
+        {/* Position */}
         <div>
           <label className="mb-1 block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-            Title
+            Position
           </label>
           <input
             ref={titleRef}
             type="text"
-            value={label}
+            value={positionName}
+            onFocus={() => setShowPositionSuggestions(true)}
+            onBlur={() => setTimeout(() => setShowPositionSuggestions(false), 200)}
             onChange={(e) => {
-              setLabel(e.target.value);
-              onUpdate(node.id, { label: e.target.value, description, player, tags });
+              setPositionName(e.target.value);
+              setShowPositionSuggestions(true);
+              onUpdate(node.id, { position_name: e.target.value, conditions, giNogi, description });
             }}
             className="w-full rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm text-zinc-900 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-100"
           />
-        </div>
-
-        <div>
-          <label className="mb-1 block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-            Concepts
-          </label>
-          <div className="flex flex-wrap gap-1">
-            {BJJ_CONCEPTS.map((concept) => {
-              const active = tags.includes(concept);
-              return (
+          {showPositionSuggestions && filteredPositions.length > 0 && (isDefault || positionName !== filteredPositions[0]?.name) && (
+            <div className="mt-1 flex flex-wrap gap-1">
+              {filteredPositions.slice(0, 12).map((p) => (
                 <button
-                  key={concept}
+                  key={p.name}
+                  onMouseDown={(e) => e.preventDefault()}
                   onClick={() => {
-                    const newTags = active
-                      ? tags.filter((t) => t !== concept)
-                      : [...tags, concept];
-                    setTags(newTags);
-                    onUpdate(node.id, { label, description, player, tags: newTags });
+                    setPositionName(p.name);
+                    setShowPositionSuggestions(false);
+                    onUpdate(node.id, { position_name: p.name, conditions, giNogi, description });
                   }}
-                  className={`rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors ${
-                    active
-                      ? "bg-indigo-500 text-white"
-                      : "bg-indigo-500/20 text-indigo-300 hover:bg-indigo-500/40"
-                  }`}
+                  className="rounded-full bg-zinc-600/30 px-2 py-0.5 text-[10px] font-medium text-zinc-300 hover:bg-zinc-600/50 transition-colors"
                 >
-                  {concept}
+                  {p.name}
                 </button>
-              );
-            })}
+              ))}
+            </div>
+          )}
+          <div className="mt-1 text-[10px] text-zinc-500">
+            {roles.roleA} / {roles.roleB}
           </div>
         </div>
 
+        {/* Gi / No-Gi */}
         <div>
           <label className="mb-1 block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-            Player
+            Gi / No-Gi
           </label>
           <div className="flex gap-2">
             {([
-              { value: "neutral", label: "None", color: "bg-zinc-600" },
-              { value: "A", label: "Player A", color: "bg-blue-500" },
-              { value: "B", label: "Player B", color: "bg-red-500" },
-            ] as const).map((opt) => (
+              { value: "" as GiNogi, label: "Both" },
+              { value: "gi" as GiNogi, label: "Gi" },
+              { value: "nogi" as GiNogi, label: "No-Gi" },
+            ]).map((opt) => (
               <button
                 key={opt.value}
                 onClick={() => {
-                  setPlayer(opt.value);
-                  onUpdate(node.id, { label, description, player: opt.value, tags });
+                  setGiNogi(opt.value);
+                  // Strip gi-only conditions when switching to nogi
+                  let nextConditions = conditions;
+                  if (opt.value === "nogi") {
+                    const giOnlyValues = new Set(
+                      taxonomy.conditionGroups.flatMap((g) => g.options.filter((o) => o.gi_only).map((o) => o.label)),
+                    );
+                    nextConditions = conditions.filter((c) => !giOnlyValues.has(c.value));
+                    setConditions(nextConditions);
+                  }
+                  onUpdate(node.id, { position_name: positionName, conditions: nextConditions, giNogi: opt.value, description });
                 }}
-                className={`flex-1 rounded-md px-2 py-1.5 text-xs font-medium text-white transition-colors ${opt.color} ${
-                  player === opt.value
+                className={`flex-1 rounded-md px-2 py-1.5 text-xs font-medium text-white transition-colors bg-zinc-600 ${
+                  giNogi === opt.value
                     ? "ring-2 ring-offset-1 ring-offset-zinc-800 ring-white"
                     : "opacity-50 hover:opacity-75"
                 }`}
@@ -129,17 +163,74 @@ export default function NodeEditor({ node, focusTitle, position, onUpdate, onDel
           </div>
         </div>
 
+        {/* Conditions */}
+        <div>
+          <label className="mb-2 block text-xs font-medium text-zinc-600 dark:text-zinc-400">
+            Conditions
+          </label>
+          <div className="space-y-3">
+            {(["A", "B"] as const).map((role) => {
+              const roleLabel = role === "A" ? roles.roleA : roles.roleB;
+              const allowed = getAllowedOptionIds(positionName, role, taxonomy);
+              const groupRows = taxonomy.conditionGroups.map((group) => {
+                const opts = getFilteredOptions(group, giNogi, allowed);
+                return { group, opts };
+              }).filter((r) => r.opts.length > 0);
+
+              if (groupRows.length === 0) return null;
+              return (
+                <div key={role}>
+                  <div className="mb-1.5 text-[10px] font-semibold text-zinc-300 dark:text-zinc-300">
+                    {roleLabel}
+                  </div>
+                  <div className="space-y-1.5 ml-1">
+                    {groupRows.map(({ group, opts }) => {
+                      const activeValue = getActiveValue(group.id, role);
+                      return (
+                        <div key={group.id} className="flex items-center gap-1">
+                          <span className="w-20 shrink-0 text-[9px] font-medium text-zinc-500 dark:text-zinc-400">
+                            {group.name}
+                          </span>
+                          <div className="flex flex-wrap gap-0.5">
+                            {opts.map((opt) => {
+                              const active = activeValue === opt.label;
+                              return (
+                                <button
+                                  key={opt.label}
+                                  onClick={() => toggleCondition(group.id, opt.label, role)}
+                                  className={`rounded-full px-1.5 py-0.5 text-[9px] font-medium transition-colors ${
+                                    active
+                                      ? "bg-indigo-500 text-white"
+                                      : "bg-indigo-500/15 text-indigo-300 hover:bg-indigo-500/30"
+                                  }`}
+                                >
+                                  {opt.label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Description */}
         <div>
           <label className="mb-1 block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-            Description
+            Notes
           </label>
           <textarea
             value={description}
             onChange={(e) => {
               setDescription(e.target.value);
-              onUpdate(node.id, { label, description: e.target.value, player, tags });
+              onUpdate(node.id, { position_name: positionName, conditions, giNogi, description: e.target.value });
             }}
-            rows={4}
+            rows={3}
             className="w-full rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm text-zinc-900 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-100"
           />
         </div>
@@ -148,7 +239,7 @@ export default function NodeEditor({ node, focusTitle, position, onUpdate, onDel
           onClick={() => onDelete(node.id)}
           className="w-full rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-red-500"
         >
-          Delete Node
+          Delete State
         </button>
       </div>
     </div>
