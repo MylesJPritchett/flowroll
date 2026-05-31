@@ -90,7 +90,7 @@ export default function DatabaseView({ mode, userId }: DatabaseViewProps) {
     const key = `${posId}:${role}`;
     const current = pcMap[key] ?? new Set();
     const enabled = !current.has(optionId);
-    await setPositionCondition(posId, optionId, role, enabled);
+    setPositionCondition(posId, optionId, role, enabled);
     setPcMap((prev) => {
       const next = new Set(prev[key] ?? []);
       if (enabled) next.add(optionId);
@@ -104,7 +104,7 @@ export default function DatabaseView({ mode, userId }: DatabaseViewProps) {
   };
 
   const handleToggleOfficial = async (table: "positions" | "condition_groups" | "condition_options" | "actions", id: string, current: boolean) => {
-    await setOfficial(table, id, !current);
+    setOfficial(table, id, !current);
     // Update local state
     const toggle = <T extends { id: string; is_official: boolean }>(items: T[]) =>
       items.map((i) => (i.id === id ? { ...i, is_official: !current } : i));
@@ -167,7 +167,7 @@ export default function DatabaseView({ mode, userId }: DatabaseViewProps) {
                 onDelete={() => { deletePosition(pos.id); setPositions((prev) => prev.filter((p) => p.id !== pos.id)); }}
                 onToggleOfficial={() => handleToggleOfficial("positions", pos.id, pos.is_official)}
                 onToggleRequirement={async (optionId, role, required) => {
-                  await setPositionRequirement(pos.id, optionId, role, required);
+                  setPositionRequirement(pos.id, optionId, role, required);
                   setPosReqs((prev) => {
                     const current = prev[pos.id] ?? [];
                     if (required) {
