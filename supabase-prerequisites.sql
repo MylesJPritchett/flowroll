@@ -16,3 +16,7 @@ create index idx_pos_req_position on position_requirements (position_id);
 -- Each is an array of { groupId, value, role } objects
 ALTER TABLE actions ADD COLUMN IF NOT EXISTS required_conditions jsonb NOT NULL DEFAULT '[]';
 ALTER TABLE actions ADD COLUMN IF NOT EXISTS forbidden_conditions jsonb NOT NULL DEFAULT '[]';
+
+-- Action condition effects: conditions auto-applied to the target state
+ALTER TABLE actions ADD COLUMN IF NOT EXISTS adds_conditions jsonb NOT NULL DEFAULT '[]';
+ALTER TABLE actions ADD COLUMN IF NOT EXISTS removes_conditions jsonb NOT NULL DEFAULT '[]';

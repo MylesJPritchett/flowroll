@@ -196,11 +196,53 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, onNodesCha
     }, 100);
   }, [nodes, edges, emitNodes, emitEdges]);
 
+  const applyActionEffects = useCallback(
+    (actionNodeId: string, targetNodeId: string) => {
+      const actionNode = nodes.find((n) => n.id === actionNodeId);
+      if (!actionNode || actionNode.type !== "action") return;
+      const actionData = actionNode.data as Record<string, unknown>;
+      const actionId = actionData.action_id as string;
+      const action = taxonomy.actions.find((a) => a.id === actionId);
+      if (!action) return;
+      if (action.adds_conditions.length === 0 && action.removes_conditions.length === 0) return;
+
+      setNodes((nds) =>
+        nds.map((n) => {
+          if (n.id !== targetNodeId || n.type !== "state") return n;
+          const d = n.data as Record<string, unknown>;
+          let conditions = (d.conditions as StateCondition[]) ?? [];
+
+          // Remove conditions
+          for (const rem of action.removes_conditions) {
+            conditions = conditions.filter((c) => !(c.groupId === rem.groupId && c.value === rem.value && c.role === rem.role));
+          }
+
+          // Add conditions (replace within same group+role since exclusive)
+          for (const add of action.adds_conditions) {
+            conditions = conditions.filter((c) => !(c.groupId === add.groupId && c.role === add.role));
+            conditions.push({ groupId: add.groupId, value: add.value, role: add.role });
+          }
+
+          return { ...n, data: { ...d, conditions } };
+        }),
+      );
+    },
+    [nodes, taxonomy.actions, setNodes],
+  );
+
   const onConnect: OnConnect = useCallback(
     (params) => {
       setEdges((eds) => addEdge({ ...params, ...edgeStyle }, eds));
+      // Apply action effects if action → state connection
+      if (params.source) {
+        const sourceNode = nodes.find((n) => n.id === params.source);
+        const targetNode = params.target ? nodes.find((n) => n.id === params.target) : undefined;
+        if (sourceNode?.type === "action" && targetNode?.type === "state") {
+          applyActionEffects(params.source, params.target!);
+        }
+      }
     },
-    [setEdges],
+    [setEdges, nodes, applyActionEffects],
   );
 
   const [focusTitle, setFocusTitle] = useState(false);
@@ -243,12 +285,22 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, onNodesCha
       const edgeId = `e${nodeId}`;
 
       if (sourceType === "action") {
-        // From action → create state
+        // From action → create state, pre-apply effects
+        const actionData = sourceNode?.data as Record<string, unknown> | undefined;
+        const actionId = actionData?.action_id as string | undefined;
+        const action = actionId ? taxonomy.actions.find((a) => a.id === actionId) : undefined;
+        let initialConditions: StateCondition[] = [];
+        if (action) {
+          for (const add of action.adds_conditions) {
+            initialConditions = initialConditions.filter((c) => !(c.groupId === add.groupId && c.role === add.role));
+            initialConditions.push({ groupId: add.groupId, value: add.value, role: add.role });
+          }
+        }
         const newNode: Node = {
           id: nodeId,
           type: "state",
           position,
-          data: { position_name: "New State", conditions: [], giNogi: "", description: "" },
+          data: { position_name: "New State", conditions: initialConditions, giNogi: "", description: "" },
         };
         setNodes((nds) => [...nds, newNode]);
         setEdges((eds) => [...eds, { id: edgeId, source: sourceId, target: nodeId, ...edgeStyle } as Edge]);

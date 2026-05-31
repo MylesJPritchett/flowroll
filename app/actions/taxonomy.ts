@@ -47,6 +47,8 @@ export interface Action extends OwnershipFields {
   gi_nogi: "" | "gi" | "nogi";
   required_conditions: ConditionRef[];
   forbidden_conditions: ConditionRef[];
+  adds_conditions: ConditionRef[];
+  removes_conditions: ConditionRef[];
   sort_order: number;
 }
 
@@ -315,7 +317,7 @@ export async function addAction(name: string, description: string, giNogi: "" | 
   return data;
 }
 
-export async function updateAction(id: string, updates: { name?: string; description?: string; gi_nogi?: "" | "gi" | "nogi"; is_public?: boolean; required_conditions?: ConditionRef[]; forbidden_conditions?: ConditionRef[] }): Promise<boolean> {
+export async function updateAction(id: string, updates: { name?: string; description?: string; gi_nogi?: "" | "gi" | "nogi"; is_public?: boolean; required_conditions?: ConditionRef[]; forbidden_conditions?: ConditionRef[]; adds_conditions?: ConditionRef[]; removes_conditions?: ConditionRef[] }): Promise<boolean> {
   const supabase = createSupabaseServer();
   const { error } = await supabase.from("actions").update(updates).eq("id", id);
   if (error) { console.error("Failed to update action:", error); return false; }

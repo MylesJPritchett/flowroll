@@ -627,6 +627,12 @@ function ActionRowWithPrereqs({
         {action.forbidden_conditions.length > 0 && (
           <span className="text-[9px] text-red-400" title="Has forbidden conditions">forb:{action.forbidden_conditions.length}</span>
         )}
+        {action.adds_conditions.length > 0 && (
+          <span className="text-[9px] text-blue-400" title="Adds conditions">+{action.adds_conditions.length}</span>
+        )}
+        {action.removes_conditions.length > 0 && (
+          <span className="text-[9px] text-orange-400" title="Removes conditions">-{action.removes_conditions.length}</span>
+        )}
         <CreatedByBadge createdBy={action.created_by} />
         {editable && (
           <button onClick={onDelete} className="text-zinc-500 hover:text-red-400 transition-colors px-1">&times;</button>
@@ -650,6 +656,24 @@ function ActionRowWithPrereqs({
             (ref) => {
               const next = toggleConditionRef(action.forbidden_conditions, ref);
               onUpdate({ forbidden_conditions: next });
+            },
+          )}
+          {renderConditionPicker(
+            "Adds Conditions (auto-applied to the resulting state)",
+            action.adds_conditions,
+            "bg-blue-600",
+            (ref) => {
+              const next = toggleConditionRef(action.adds_conditions, ref);
+              onUpdate({ adds_conditions: next });
+            },
+          )}
+          {renderConditionPicker(
+            "Removes Conditions (auto-removed from the resulting state)",
+            action.removes_conditions,
+            "bg-orange-600",
+            (ref) => {
+              const next = toggleConditionRef(action.removes_conditions, ref);
+              onUpdate({ removes_conditions: next });
             },
           )}
         </div>
