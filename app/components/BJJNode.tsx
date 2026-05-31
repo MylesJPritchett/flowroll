@@ -23,7 +23,11 @@ export default function BJJNode({ data }: NodeProps) {
           {conditions.map((c) => (
             <span
               key={`${c.groupId}-${c.role}`}
-              className="rounded-full bg-indigo-500/20 px-1.5 py-0.5 text-[9px] font-medium text-indigo-300"
+              className={`rounded-full px-1.5 py-0.5 text-[9px] font-medium ${
+                c.role === "A"
+                  ? "bg-blue-500/20 text-blue-300"
+                  : "bg-amber-500/20 text-amber-300"
+              }`}
             >
               <span className="opacity-60">{roleLabel(c.role)}</span> {c.value}
             </span>

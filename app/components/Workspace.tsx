@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { loadGraph, saveGraph, type GraphNode, type GraphEdge } from "../actions/graph";
+import { loadGraph, saveGraph, type GraphNode, type GraphEdge, type GraphStateNode } from "../actions/graph";
 import { loadTaxonomy } from "../actions/taxonomy";
 import type { Position, ConditionGroup } from "../actions/taxonomy";
 import GraphEditor from "./GraphEditor";
@@ -57,11 +57,12 @@ export default function Workspace() {
     scheduleSave(nodes, edges);
   }, [nodes, edges, scheduleSave]);
 
-  // --- Node operations (for list view) ---
-  const addNode = useCallback(() => {
+  // --- State node operations (for list view) ---
+  const addStateNode = useCallback(() => {
     const id = `${Date.now()}`;
-    const newNode: GraphNode = {
+    const newNode: GraphStateNode = {
       id,
+      type: "state",
       position_name: "New State",
       conditions: [],
       giNogi: "",
@@ -72,7 +73,7 @@ export default function Workspace() {
     setNodes((prev) => [...prev, newNode]);
   }, []);
 
-  const updateNode = useCallback((updated: GraphNode) => {
+  const updateStateNode = useCallback((updated: GraphStateNode) => {
     setNodes((prev) => prev.map((n) => (n.id === updated.id ? updated : n)));
   }, []);
 
@@ -121,10 +122,10 @@ export default function Workspace() {
       <div className="relative flex-1">
         {view === "list" ? (
           <StateListView
-            nodes={nodes}
+            nodes={nodes.filter((n): n is GraphStateNode => n.type === "state")}
             taxonomy={taxonomy}
-            onAdd={addNode}
-            onUpdate={updateNode}
+            onAdd={addStateNode}
+            onUpdate={updateStateNode}
             onDelete={deleteNode}
           />
         ) : (

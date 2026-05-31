@@ -19,31 +19,45 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import BJJNode from "./BJJNode";
+import ActionNode from "./ActionNode";
 import NodeEditor from "./NodeEditor";
-import EdgeEditor from "./EdgeEditor";
-import type { GraphNode, GraphEdge, GiNogi } from "../actions/graph";
+import ActionNodeEditor from "./ActionNodeEditor";
+import type { GraphNode, GraphEdge, GraphStateNode, GraphActionNode } from "../actions/graph";
 import type { Position as DBPosition } from "../actions/taxonomy";
 import { getRoleLabels } from "../concepts";
-import type { StateCondition } from "../concepts";
-import type { Taxonomy } from "../concepts";
+import type { StateCondition, Taxonomy } from "../concepts";
+import type { GiNogi } from "../actions/graph";
 
 const nodeTypes: NodeTypes = {
-  bjj: BJJNode,
+  state: BJJNode,
+  action: ActionNode,
 };
 
-const defaultEdgeStyle: Partial<Edge> = {
+const edgeStyle: Partial<Edge> = {
   animated: true,
-  style: { stroke: "#6366f1", strokeWidth: 2 },
+  style: { stroke: "#52525b", strokeWidth: 1.5 },
 };
 
 // --- Conversion helpers ---
 
 function toRFNodes(dbNodes: GraphNode[], positions: DBPosition[]): Node[] {
   return dbNodes.map((n) => {
+    if (n.type === "action") {
+      return {
+        id: n.id,
+        type: "action",
+        position: { x: n.position_x, y: n.position_y },
+        data: {
+          action_id: n.action_id,
+          action_name: n.action_name,
+          actor: n.actor,
+        },
+      };
+    }
     const roles = getRoleLabels(n.position_name, positions);
     return {
       id: n.id,
-      type: "bjj",
+      type: "state",
       position: { x: n.position_x, y: n.position_y },
       data: {
         position_name: n.position_name,
@@ -62,17 +76,27 @@ function toRFEdges(dbEdges: GraphEdge[]): Edge[] {
     id: e.id,
     source: e.source_node_id,
     target: e.target_node_id,
-    label: e.label,
-    data: { actor: e.actor, giNogi: e.giNogi, description: e.description },
-    ...defaultEdgeStyle,
+    ...edgeStyle,
   }));
 }
 
 function fromRFNodes(nodes: Node[]): GraphNode[] {
   return nodes.map((n) => {
     const d = n.data as Record<string, unknown>;
+    if (n.type === "action") {
+      return {
+        id: n.id,
+        type: "action" as const,
+        action_id: (d.action_id as string) ?? "",
+        action_name: (d.action_name as string) ?? "",
+        actor: (d.actor as "A" | "B") ?? "A",
+        position_x: n.position.x,
+        position_y: n.position.y,
+      };
+    }
     return {
       id: n.id,
+      type: "state" as const,
       position_name: (d.position_name as string) ?? "New State",
       description: (d.description as string) ?? "",
       conditions: (d.conditions as StateCondition[]) ?? [],
@@ -84,18 +108,11 @@ function fromRFNodes(nodes: Node[]): GraphNode[] {
 }
 
 function fromRFEdges(edges: Edge[]): GraphEdge[] {
-  return edges.map((e) => {
-    const d = e.data as Record<string, unknown> | undefined;
-    return {
-      id: e.id,
-      source_node_id: e.source,
-      target_node_id: e.target,
-      label: (e.label as string) ?? "",
-      actor: (d?.actor as "A" | "B") ?? "A",
-      giNogi: (d?.giNogi as GiNogi) ?? "",
-      description: (d?.description as string) ?? "",
-    };
-  });
+  return edges.map((e) => ({
+    id: e.id,
+    source_node_id: e.source,
+    target_node_id: e.target,
+  }));
 }
 
 // --- Props ---
@@ -112,8 +129,8 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, onNodesCha
   const { screenToFlowPosition } = useReactFlow();
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
-  const [selectedNode, setSelectedNode] = useState<Node | null>(null);
-  const [selectedEdge, setSelectedEdge] = useState<Edge | null>(null);
+  const [selectedStateNode, setSelectedStateNode] = useState<Node | null>(null);
+  const [selectedActionNode, setSelectedActionNode] = useState<Node | null>(null);
   const syncing = useRef(false);
 
   // Sync from parent → local RF state
@@ -121,11 +138,10 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, onNodesCha
     syncing.current = true;
     setNodes(toRFNodes(dbNodes, taxonomy.positions));
     setEdges(toRFEdges(dbEdges));
-    // Allow a tick for the state to settle before re-enabling emit
     setTimeout(() => { syncing.current = false; }, 50);
   }, [dbNodes, dbEdges, setNodes, setEdges]);
 
-  // Emit local changes → parent (debounced to avoid loops)
+  // Emit local changes → parent
   const emitTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (syncing.current) return;
@@ -138,9 +154,7 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, onNodesCha
 
   const onConnect: OnConnect = useCallback(
     (params) => {
-      setEdges((eds) =>
-        addEdge({ ...params, label: "", data: { actor: "A", giNogi: "", description: "" }, ...defaultEdgeStyle }, eds),
-      );
+      setEdges((eds) => addEdge({ ...params, ...edgeStyle }, eds));
     },
     [setEdges],
   );
@@ -168,6 +182,8 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, onNodesCha
 
   const justCreatedNode = useRef(false);
 
+  // When dragging from a state to empty space → create action node
+  // When dragging from an action to empty space → create state node
   const onConnectEnd = useCallback(
     (event: MouseEvent | TouchEvent, connectionState: { isValid: boolean | null; fromNode: { id: string } | null }) => {
       if (connectionState.isValid) return;
@@ -175,62 +191,84 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, onNodesCha
       const clientX = "changedTouches" in event ? event.changedTouches[0].clientX : event.clientX;
       const clientY = "changedTouches" in event ? event.changedTouches[0].clientY : event.clientY;
       const position = screenToFlowPosition({ x: clientX, y: clientY });
+      const sourceId = connectionState.fromNode.id;
+      const sourceNode = nodes.find((n) => n.id === sourceId);
+      const sourceType = sourceNode?.type;
+
       const nodeId = `${Date.now()}`;
       const edgeId = `e${nodeId}`;
-      const sourceId = connectionState.fromNode.id;
-      const newNode: Node = {
-        id: nodeId,
-        type: "bjj",
-        position,
-        data: { position_name: "New State", conditions: [], giNogi: "", description: "" },
-      };
-      setNodes((nds) => [...nds, newNode]);
-      setEdges((eds) => [
-        ...eds,
-        { id: edgeId, source: sourceId, target: nodeId, label: "", data: { actor: "A", giNogi: "", description: "" }, ...defaultEdgeStyle } as Edge,
-      ]);
-      justCreatedNode.current = true;
-      setSelectedNode(newNode);
-      setSelectedEdge(null);
-      setFocusTitle(true);
-      setEditorPos(clampEditorPos(clientX, clientY));
+
+      if (sourceType === "action") {
+        // From action → create state
+        const newNode: Node = {
+          id: nodeId,
+          type: "state",
+          position,
+          data: { position_name: "New State", conditions: [], giNogi: "", description: "" },
+        };
+        setNodes((nds) => [...nds, newNode]);
+        setEdges((eds) => [...eds, { id: edgeId, source: sourceId, target: nodeId, ...edgeStyle } as Edge]);
+        justCreatedNode.current = true;
+        setSelectedStateNode(newNode);
+        setSelectedActionNode(null);
+        setFocusTitle(true);
+        setEditorPos(clampEditorPos(clientX, clientY));
+      } else {
+        // From state → create action
+        const newNode: Node = {
+          id: nodeId,
+          type: "action",
+          position,
+          data: { action_id: "", action_name: "", actor: "A" },
+        };
+        setNodes((nds) => [...nds, newNode]);
+        setEdges((eds) => [...eds, { id: edgeId, source: sourceId, target: nodeId, ...edgeStyle } as Edge]);
+        justCreatedNode.current = true;
+        setSelectedActionNode(newNode);
+        setSelectedStateNode(null);
+        setEditorPos(clampEditorPos(clientX, clientY));
+      }
     },
-    [screenToFlowPosition, setNodes, setEdges, clampEditorPos],
+    [screenToFlowPosition, setNodes, setEdges, clampEditorPos, nodes],
   );
 
-  const addNode = useCallback(() => {
+  const addStateNode = useCallback(() => {
     const id = `${Date.now()}`;
     const newNode: Node = {
       id,
-      type: "bjj",
+      type: "state",
       position: { x: Math.random() * 400 + 100, y: Math.random() * 400 + 100 },
       data: { position_name: "New State", conditions: [], giNogi: "", description: "" },
     };
     setNodes((nds) => [...nds, newNode]);
-    setSelectedNode(newNode);
-    setSelectedEdge(null);
+    setSelectedStateNode(newNode);
+    setSelectedActionNode(null);
     setFocusTitle(true);
     const rect = containerRef.current?.getBoundingClientRect();
     if (rect) setEditorPos(clampEditorPos(rect.left + rect.width / 2, rect.top + rect.height / 2));
   }, [setNodes, clampEditorPos]);
 
   const onNodeClick = useCallback((e: React.MouseEvent, node: Node) => {
-    setSelectedNode(node);
-    setSelectedEdge(null);
+    if (node.type === "action") {
+      setSelectedActionNode(node);
+      setSelectedStateNode(null);
+    } else {
+      setSelectedStateNode(node);
+      setSelectedActionNode(null);
+    }
     setFocusTitle(false);
     setEditorPos(getRelativePos(e));
   }, [getRelativePos]);
 
   const onNodeDoubleClick = useCallback((e: React.MouseEvent, node: Node) => {
-    setSelectedNode(node);
-    setSelectedEdge(null);
-    setFocusTitle(true);
-    setEditorPos(getRelativePos(e));
-  }, [getRelativePos]);
-
-  const onEdgeClick = useCallback((e: React.MouseEvent, edge: Edge) => {
-    setSelectedEdge(edge);
-    setSelectedNode(null);
+    if (node.type === "action") {
+      setSelectedActionNode(node);
+      setSelectedStateNode(null);
+    } else {
+      setSelectedStateNode(node);
+      setSelectedActionNode(null);
+      setFocusTitle(true);
+    }
     setEditorPos(getRelativePos(e));
   }, [getRelativePos]);
 
@@ -239,14 +277,22 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, onNodesCha
       justCreatedNode.current = false;
       return;
     }
-    setSelectedNode(null);
-    setSelectedEdge(null);
+    setSelectedStateNode(null);
+    setSelectedActionNode(null);
   }, []);
 
-  const updateNode = useCallback(
+  const updateStateNode = useCallback(
     (id: string, data: { position_name: string; conditions: StateCondition[]; giNogi: GiNogi; description: string }) => {
       setNodes((nds) => nds.map((n) => (n.id === id ? { ...n, data: { ...n.data, ...data } } : n)));
-      setSelectedNode((prev) => (prev && prev.id === id ? { ...prev, data: { ...prev.data, ...data } } : prev));
+      setSelectedStateNode((prev) => (prev && prev.id === id ? { ...prev, data: { ...prev.data, ...data } } : prev));
+    },
+    [setNodes],
+  );
+
+  const updateActionNode = useCallback(
+    (id: string, data: { action_id: string; action_name: string; actor: "A" | "B" }) => {
+      setNodes((nds) => nds.map((n) => (n.id === id ? { ...n, data: { ...n.data, ...data } } : n)));
+      setSelectedActionNode((prev) => (prev && prev.id === id ? { ...prev, data: { ...prev.data, ...data } } : prev));
     },
     [setNodes],
   );
@@ -255,44 +301,27 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, onNodesCha
     (id: string) => {
       setNodes((nds) => nds.filter((n) => n.id !== id));
       setEdges((eds) => eds.filter((e) => e.source !== id && e.target !== id));
-      setSelectedNode(null);
+      setSelectedStateNode(null);
+      setSelectedActionNode(null);
     },
     [setNodes, setEdges],
   );
 
-  const updateEdge = useCallback(
-    (id: string, data: { label: string; actor: "A" | "B"; giNogi: GiNogi; description: string }) => {
-      setEdges((eds) =>
-        eds.map((e) =>
-          e.id === id
-            ? { ...e, label: data.label, data: { ...e.data, actor: data.actor, giNogi: data.giNogi, description: data.description } }
-            : e,
-        ),
-      );
-      setSelectedEdge((prev) =>
-        prev && prev.id === id
-          ? { ...prev, label: data.label, data: { ...prev.data, actor: data.actor, giNogi: data.giNogi, description: data.description } }
-          : prev,
-      );
+  // Get role labels for an action node from its connected source state
+  const getActionRoleLabels = useCallback(
+    (actionNode: Node) => {
+      // Find the state node connected to this action (as source)
+      const incomingEdge = edges.find((e) => e.target === actionNode.id);
+      if (incomingEdge) {
+        const sourceNode = nodes.find((n) => n.id === incomingEdge.source);
+        if (sourceNode?.type === "state") {
+          const posName = (sourceNode.data as Record<string, unknown>)?.position_name as string | undefined;
+          return getRoleLabels(posName ?? "", taxonomy.positions);
+        }
+      }
+      return { roleA: "A", roleB: "B" };
     },
-    [setEdges],
-  );
-
-  const deleteEdge = useCallback(
-    (id: string) => {
-      setEdges((eds) => eds.filter((e) => e.id !== id));
-      setSelectedEdge(null);
-    },
-    [setEdges],
-  );
-
-  const getEdgeRoleLabels = useCallback(
-    (edge: Edge) => {
-      const sourceNode = nodes.find((n) => n.id === edge.source);
-      const posName = (sourceNode?.data as Record<string, unknown>)?.position_name as string | undefined;
-      return getRoleLabels(posName ?? "", taxonomy.positions);
-    },
-    [nodes],
+    [nodes, edges, taxonomy.positions],
   );
 
   return (
@@ -306,7 +335,6 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, onNodesCha
         onConnectEnd={onConnectEnd}
         onNodeClick={onNodeClick}
         onNodeDoubleClick={onNodeDoubleClick}
-        onEdgeClick={onEdgeClick}
         onPaneClick={onPaneClick}
         nodeTypes={nodeTypes}
         fitView
@@ -318,32 +346,33 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, onNodesCha
       </ReactFlow>
 
       <button
-        onClick={addNode}
+        onClick={addStateNode}
         className="absolute left-4 top-4 z-10 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-md transition-colors hover:bg-indigo-500"
       >
         + Add State
       </button>
 
-      {selectedNode && (
+      {selectedStateNode && (
         <NodeEditor
-          node={selectedNode}
+          node={selectedStateNode}
           taxonomy={taxonomy}
           focusTitle={focusTitle}
           position={editorPos}
-          onUpdate={updateNode}
+          onUpdate={updateStateNode}
           onDelete={deleteNode}
-          onClose={() => { setSelectedNode(null); setFocusTitle(false); }}
+          onClose={() => { setSelectedStateNode(null); setFocusTitle(false); }}
         />
       )}
 
-      {selectedEdge && (
-        <EdgeEditor
-          edge={selectedEdge}
-          roleLabels={getEdgeRoleLabels(selectedEdge)}
+      {selectedActionNode && (
+        <ActionNodeEditor
+          node={selectedActionNode}
+          taxonomy={taxonomy}
+          roleLabels={getActionRoleLabels(selectedActionNode)}
           position={editorPos}
-          onUpdate={updateEdge}
-          onDelete={deleteEdge}
-          onClose={() => setSelectedEdge(null)}
+          onUpdate={updateActionNode}
+          onDelete={deleteNode}
+          onClose={() => setSelectedActionNode(null)}
         />
       )}
     </div>

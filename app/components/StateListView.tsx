@@ -1,25 +1,25 @@
 "use client";
 
 import { useState } from "react";
-import type { GraphNode, GiNogi } from "../actions/graph";
+import type { GraphStateNode, GiNogi } from "../actions/graph";
 import type { StateCondition } from "../concepts";
 import { getRoleLabels, getFilteredOptions, getAllowedOptionIds } from "../concepts";
 import type { Taxonomy } from "../concepts";
 
 interface StateListViewProps {
-  nodes: GraphNode[];
+  nodes: GraphStateNode[];
   taxonomy: Taxonomy;
   onAdd: () => void;
-  onUpdate: (node: GraphNode) => void;
+  onUpdate: (node: GraphStateNode) => void;
   onDelete: (id: string) => void;
 }
 
-function StateRow({ node, taxonomy, onUpdate, onDelete }: { node: GraphNode; taxonomy: Taxonomy; onUpdate: (n: GraphNode) => void; onDelete: (id: string) => void }) {
+function StateRow({ node, taxonomy, onUpdate, onDelete }: { node: GraphStateNode; taxonomy: Taxonomy; onUpdate: (n: GraphStateNode) => void; onDelete: (id: string) => void }) {
   const [expanded, setExpanded] = useState(false);
   const [showPositionSuggestions, setShowPositionSuggestions] = useState(false);
   const roles = getRoleLabels(node.position_name, taxonomy.positions);
 
-  const update = (patch: Partial<GraphNode>) => {
+  const update = (patch: Partial<GraphStateNode>) => {
     onUpdate({ ...node, ...patch });
   };
 

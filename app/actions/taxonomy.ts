@@ -27,24 +27,33 @@ export interface ConditionGroup {
   options: ConditionOption[];
 }
 
+export interface Action {
+  id: string;
+  name: string;
+  description: string;
+  gi_nogi: "" | "gi" | "nogi";
+  sort_order: number;
+}
+
 // --- Load ---
 
 export async function loadTaxonomy(): Promise<{
   positions: Position[];
   conditionGroups: ConditionGroup[];
-  // key: "positionId:role" → Set of allowed condition_option_ids
+  actions: Action[];
   positionConditions: Record<string, string[]>;
 } | null> {
   const supabase = createSupabaseServer();
 
-  const [posResult, groupsResult, optionsResult] = await Promise.all([
+  const [posResult, groupsResult, optionsResult, actionsResult] = await Promise.all([
     supabase.from("positions").select("*").order("sort_order"),
     supabase.from("condition_groups").select("*").order("sort_order"),
     supabase.from("condition_options").select("*").order("sort_order"),
+    supabase.from("actions").select("*").order("sort_order"),
   ]);
 
-  if (posResult.error || groupsResult.error || optionsResult.error) {
-    console.error("Failed to load taxonomy:", posResult.error, groupsResult.error, optionsResult.error);
+  if (posResult.error || groupsResult.error || optionsResult.error || actionsResult.error) {
+    console.error("Failed to load taxonomy:", posResult.error, groupsResult.error, optionsResult.error, actionsResult.error);
     return null;
   }
 
@@ -86,7 +95,7 @@ export async function loadTaxonomy(): Promise<{
     positionConditions[key].push(row.condition_option_id);
   }
 
-  return { positions: posResult.data, conditionGroups, positionConditions };
+  return { positions: posResult.data, conditionGroups, actions: actionsResult.data, positionConditions };
 }
 
 // --- Positions CRUD ---
@@ -234,5 +243,36 @@ export async function setPositionCondition(
       .insert({ position_id: positionId, condition_option_id: conditionOptionId, role });
     if (error) return false;
   }
+  return true;
+}
+
+// --- Actions CRUD ---
+
+export async function addAction(name: string, description: string, giNogi: "" | "gi" | "nogi"): Promise<Action | null> {
+  const supabase = createSupabaseServer();
+  const { data: maxRow } = await supabase.from("actions").select("sort_order").order("sort_order", { ascending: false }).limit(1).single();
+  const sortOrder = (maxRow?.sort_order ?? -1) + 1;
+
+  const { data, error } = await supabase
+    .from("actions")
+    .insert({ name, description, gi_nogi: giNogi, sort_order: sortOrder })
+    .select()
+    .single();
+
+  if (error) { console.error("Failed to add action:", error); return null; }
+  return data;
+}
+
+export async function updateAction(id: string, updates: { name?: string; description?: string; gi_nogi?: "" | "gi" | "nogi" }): Promise<boolean> {
+  const supabase = createSupabaseServer();
+  const { error } = await supabase.from("actions").update(updates).eq("id", id);
+  if (error) { console.error("Failed to update action:", error); return false; }
+  return true;
+}
+
+export async function deleteAction(id: string): Promise<boolean> {
+  const supabase = createSupabaseServer();
+  const { error } = await supabase.from("actions").delete().eq("id", id);
+  if (error) { console.error("Failed to delete action:", error); return false; }
   return true;
 }

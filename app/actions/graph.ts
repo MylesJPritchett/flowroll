@@ -4,8 +4,13 @@ import { auth } from "@/auth";
 import { createSupabaseServer } from "@/lib/supabase";
 import type { StateCondition } from "../concepts";
 
-export interface GraphNode {
+export type GiNogi = "gi" | "nogi" | "";
+
+// --- Node types ---
+
+export interface GraphStateNode {
   id: string;
+  type: "state";
   position_name: string;
   conditions: StateCondition[];
   giNogi: GiNogi;
@@ -14,17 +19,27 @@ export interface GraphNode {
   position_y: number;
 }
 
-export type GiNogi = "gi" | "nogi" | "";
+export interface GraphActionNode {
+  id: string;
+  type: "action";
+  action_id: string;
+  action_name: string;
+  actor: "A" | "B";
+  position_x: number;
+  position_y: number;
+}
+
+export type GraphNode = GraphStateNode | GraphActionNode;
+
+// --- Edge type (simple connector) ---
 
 export interface GraphEdge {
   id: string;
   source_node_id: string;
   target_node_id: string;
-  label: string;
-  actor: "A" | "B";
-  giNogi: GiNogi;
-  description: string;
 }
+
+// --- Load ---
 
 export async function loadGraph(): Promise<{
   nodes: GraphNode[];
@@ -43,7 +58,7 @@ export async function loadGraph(): Promise<{
       .eq("user_id", userId),
     supabase
       .from("graph_edges")
-      .select("id, source_node_id, target_node_id, relationship, metadata")
+      .select("id, source_node_id, target_node_id")
       .eq("user_id", userId),
   ]);
 
@@ -52,28 +67,41 @@ export async function loadGraph(): Promise<{
     return null;
   }
 
-  const nodes: GraphNode[] = nodesResult.data.map((row: Record<string, unknown>) => ({
-    id: row.id as string,
-    position_name: (row.label as string) ?? "New State",
-    description: (row.description as string) ?? "",
-    position_x: row.position_x as number,
-    position_y: row.position_y as number,
-    conditions: ((row.metadata as Record<string, unknown>)?.conditions as StateCondition[]) ?? [],
-    giNogi: ((row.metadata as Record<string, unknown>)?.giNogi as GiNogi) ?? "",
-  }));
+  const nodes: GraphNode[] = nodesResult.data.map((row: Record<string, unknown>) => {
+    const meta = (row.metadata as Record<string, unknown>) ?? {};
+    if (meta.type === "action") {
+      return {
+        id: row.id as string,
+        type: "action" as const,
+        action_id: (meta.action_id as string) ?? "",
+        action_name: (row.label as string) ?? "",
+        actor: (meta.actor as "A" | "B") ?? "A",
+        position_x: row.position_x as number,
+        position_y: row.position_y as number,
+      };
+    }
+    return {
+      id: row.id as string,
+      type: "state" as const,
+      position_name: (row.label as string) ?? "New State",
+      description: (row.description as string) ?? "",
+      position_x: row.position_x as number,
+      position_y: row.position_y as number,
+      conditions: (meta.conditions as StateCondition[]) ?? [],
+      giNogi: (meta.giNogi as GiNogi) ?? "",
+    };
+  });
 
   const edges: GraphEdge[] = edgesResult.data.map((row: Record<string, unknown>) => ({
     id: row.id as string,
     source_node_id: row.source_node_id as string,
     target_node_id: row.target_node_id as string,
-    label: (row.relationship as string) ?? "",
-    actor: ((row.metadata as Record<string, unknown>)?.actor as "A" | "B") ?? "A",
-    giNogi: ((row.metadata as Record<string, unknown>)?.giNogi as GiNogi) ?? "",
-    description: ((row.metadata as Record<string, unknown>)?.description as string) ?? "",
   }));
 
   return { nodes, edges };
 }
+
+// --- Save ---
 
 export async function saveGraph(
   nodes: GraphNode[],
@@ -97,15 +125,28 @@ export async function saveGraph(
 
   if (nodes.length > 0) {
     const { error } = await supabase.from("graph_nodes").insert(
-      nodes.map((n) => ({
-        id: n.id,
-        user_id: userId,
-        label: n.position_name,
-        description: n.description,
-        position_x: n.position_x,
-        position_y: n.position_y,
-        metadata: { conditions: n.conditions, giNogi: n.giNogi },
-      })),
+      nodes.map((n) => {
+        if (n.type === "action") {
+          return {
+            id: n.id,
+            user_id: userId,
+            label: n.action_name,
+            description: "",
+            position_x: n.position_x,
+            position_y: n.position_y,
+            metadata: { type: "action", action_id: n.action_id, actor: n.actor },
+          };
+        }
+        return {
+          id: n.id,
+          user_id: userId,
+          label: n.position_name,
+          description: n.description,
+          position_x: n.position_x,
+          position_y: n.position_y,
+          metadata: { type: "state", conditions: n.conditions, giNogi: n.giNogi },
+        };
+      }),
     );
     if (error) {
       console.error("Failed to insert nodes:", error);
@@ -120,8 +161,8 @@ export async function saveGraph(
         user_id: userId,
         source_node_id: e.source_node_id,
         target_node_id: e.target_node_id,
-        relationship: e.label,
-        metadata: { actor: e.actor, giNogi: e.giNogi, description: e.description },
+        relationship: "",
+        metadata: {},
       })),
     );
     if (error) {

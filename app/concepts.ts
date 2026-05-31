@@ -1,12 +1,12 @@
-import type { Position, ConditionGroup, ConditionOption } from "./actions/taxonomy";
+import type { Position, ConditionGroup, ConditionOption, Action } from "./actions/taxonomy";
 
 // Re-export taxonomy types for convenience
-export type { Position, ConditionGroup, ConditionOption };
+export type { Position, ConditionGroup, ConditionOption, Action };
 
 export interface Taxonomy {
   positions: Position[];
   conditionGroups: ConditionGroup[];
-  // key: "positionId:role" → allowed condition_option_ids
+  actions: Action[];
   positionConditions: Record<string, string[]>;
 }
 

@@ -13,23 +13,28 @@ import {
   updateConditionOption,
   deleteConditionOption,
   setPositionCondition,
+  addAction,
+  updateAction,
+  deleteAction,
   type Position,
   type ConditionGroup,
+  type Action,
 } from "../actions/taxonomy";
 
 export default function TaxonomyAdmin() {
   const [positions, setPositions] = useState<Position[]>([]);
   const [groups, setGroups] = useState<ConditionGroup[]>([]);
-  // "positionId:role" → Set of allowed condition option ids
+  const [actions, setActions] = useState<Action[]>([]);
   const [pcMap, setPcMap] = useState<Record<string, Set<string>>>({});
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"positions" | "conditions" | "mappings">("positions");
+  const [activeTab, setActiveTab] = useState<"positions" | "conditions" | "actions" | "mappings">("positions");
 
   useEffect(() => {
     loadTaxonomy().then((data) => {
       if (data) {
         setPositions(data.positions);
         setGroups(data.conditionGroups);
+        setActions(data.actions);
         // Convert string[] to Set for easier toggling
         const map: Record<string, Set<string>> = {};
         for (const [key, ids] of Object.entries(data.positionConditions)) {
@@ -67,7 +72,7 @@ export default function TaxonomyAdmin() {
     <div className="mx-auto max-w-4xl p-6">
       {/* Tabs */}
       <div className="mb-6 flex gap-1 border-b border-zinc-800 pb-2">
-        {(["positions", "conditions", "mappings"] as const).map((tab) => (
+        {(["positions", "conditions", "actions", "mappings"] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -75,7 +80,7 @@ export default function TaxonomyAdmin() {
               activeTab === tab ? "bg-zinc-700 text-zinc-100" : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"
             }`}
           >
-            {tab === "positions" ? "Positions" : tab === "conditions" ? "Condition Groups" : "Position Conditions"}
+            {tab === "positions" ? "Positions" : tab === "conditions" ? "Conditions" : tab === "actions" ? "Actions" : "Position Conditions"}
           </button>
         ))}
       </div>
@@ -165,6 +170,39 @@ export default function TaxonomyAdmin() {
                       g.id === group.id ? { ...g, options: g.options.filter((o) => o.id !== optId) } : g,
                     ),
                   );
+                }}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {activeTab === "actions" && (
+        <section>
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-zinc-200">Actions</h2>
+            <button
+              onClick={async () => {
+                const action = await addAction("New Action", "", "");
+                if (action) setActions((prev) => [...prev, action]);
+              }}
+              className="rounded bg-indigo-600 px-3 py-1 text-xs font-medium text-white hover:bg-indigo-500 transition-colors"
+            >
+              + Add Action
+            </button>
+          </div>
+          <div className="space-y-1">
+            {actions.map((action) => (
+              <ActionRow
+                key={action.id}
+                action={action}
+                onUpdate={(updates) => {
+                  updateAction(action.id, updates);
+                  setActions((prev) => prev.map((a) => (a.id === action.id ? { ...a, ...updates } : a)));
+                }}
+                onDelete={() => {
+                  deleteAction(action.id);
+                  setActions((prev) => prev.filter((a) => a.id !== action.id));
                 }}
               />
             ))}
@@ -356,6 +394,40 @@ function PositionMappingRow({
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// --- Action Row ---
+
+function ActionRow({
+  action,
+  onUpdate,
+  onDelete,
+}: {
+  action: Action;
+  onUpdate: (updates: { name?: string; description?: string; gi_nogi?: "" | "gi" | "nogi" }) => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-2 rounded border border-zinc-800 bg-zinc-900 px-3 py-2">
+      <input
+        type="text"
+        value={action.name}
+        onChange={(e) => onUpdate({ name: e.target.value })}
+        className="flex-1 rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-sm text-zinc-100 outline-none focus:border-indigo-500"
+        placeholder="Action name"
+      />
+      <select
+        value={action.gi_nogi}
+        onChange={(e) => onUpdate({ gi_nogi: e.target.value as "" | "gi" | "nogi" })}
+        className="rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-100 outline-none focus:border-indigo-500"
+      >
+        <option value="">Both</option>
+        <option value="gi">Gi</option>
+        <option value="nogi">No-Gi</option>
+      </select>
+      <button onClick={onDelete} className="text-zinc-500 hover:text-red-400 transition-colors px-1">&times;</button>
     </div>
   );
 }
