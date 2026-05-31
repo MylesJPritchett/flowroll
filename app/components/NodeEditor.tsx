@@ -24,6 +24,7 @@ export default function NodeEditor({ node, taxonomy, focusTitle, position, onUpd
   const [giNogi, setGiNogi] = useState<GiNogi>((data.giNogi as GiNogi) ?? "");
   const [description, setDescription] = useState((data.description as string) ?? "");
   const [showPositionSuggestions, setShowPositionSuggestions] = useState(false);
+  const [expandedRole, setExpandedRole] = useState<"A" | "B" | null>(null);
   const titleRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -168,51 +169,74 @@ export default function NodeEditor({ node, taxonomy, focusTitle, position, onUpd
           <label className="mb-2 block text-xs font-medium text-zinc-600 dark:text-zinc-400">
             Conditions
           </label>
-          <div className="space-y-3">
+          <div className="space-y-2">
             {(["A", "B"] as const).map((role) => {
               const roleLabel = role === "A" ? roles.roleA : roles.roleB;
+              const activeConditions = conditions.filter((c) => c.role === role);
               const allowed = getAllowedOptionIds(positionName, role, taxonomy);
-              const groupRows = taxonomy.conditionGroups.map((group) => {
-                const opts = getFilteredOptions(group, giNogi, allowed);
-                return { group, opts };
-              }).filter((r) => r.opts.length > 0);
+              const isExpanded = expandedRole === role;
 
-              if (groupRows.length === 0) return null;
               return (
                 <div key={role}>
-                  <div className="mb-1.5 text-[10px] font-semibold text-zinc-300 dark:text-zinc-300">
-                    {roleLabel}
+                  <div className="mb-1 flex items-center gap-1.5">
+                    <span className="text-[10px] font-semibold text-zinc-300">{roleLabel}</span>
+                    <div className="flex flex-wrap gap-0.5 flex-1">
+                      {activeConditions.map((c) => {
+                        const group = taxonomy.conditionGroups.find((g) => g.id === c.groupId);
+                        return (
+                          <button
+                            key={`${c.groupId}-${c.role}`}
+                            onClick={() => toggleCondition(c.groupId, c.value, role)}
+                            className={`rounded-full px-1.5 py-0.5 text-[9px] font-medium bg-indigo-500 text-white hover:bg-red-500 transition-colors`}
+                            title={`${group?.name}: ${c.value} (click to remove)`}
+                          >
+                            {c.value}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <button
+                      onClick={() => setExpandedRole(isExpanded ? null : role)}
+                      className="rounded-full w-5 h-5 flex items-center justify-center text-[10px] font-bold bg-zinc-700 text-zinc-300 hover:bg-indigo-500 hover:text-white transition-colors"
+                      title="Add condition"
+                    >
+                      {isExpanded ? "-" : "+"}
+                    </button>
                   </div>
-                  <div className="space-y-1.5 ml-1">
-                    {groupRows.map(({ group, opts }) => {
-                      const activeValue = getActiveValue(group.id, role);
-                      return (
-                        <div key={group.id} className="flex items-center gap-1">
-                          <span className="w-20 shrink-0 text-[9px] font-medium text-zinc-500 dark:text-zinc-400">
-                            {group.name}
-                          </span>
-                          <div className="flex flex-wrap gap-0.5">
-                            {opts.map((opt) => {
-                              const active = activeValue === opt.label;
-                              return (
-                                <button
-                                  key={opt.label}
-                                  onClick={() => toggleCondition(group.id, opt.label, role)}
-                                  className={`rounded-full px-1.5 py-0.5 text-[9px] font-medium transition-colors ${
-                                    active
-                                      ? "bg-indigo-500 text-white"
-                                      : "bg-indigo-500/15 text-indigo-300 hover:bg-indigo-500/30"
-                                  }`}
-                                >
-                                  {opt.label}
-                                </button>
-                              );
-                            })}
+                  {isExpanded && (
+                    <div className="ml-1 mb-2 space-y-1.5 rounded border border-zinc-700 bg-zinc-900 p-2">
+                      {taxonomy.conditionGroups.map((group) => {
+                        const opts = getFilteredOptions(group, giNogi, allowed);
+                        if (opts.length === 0) return null;
+                        const activeValue = getActiveValue(group.id, role);
+                        return (
+                          <div key={group.id} className="flex items-center gap-1">
+                            <span className="w-20 shrink-0 text-[9px] font-medium text-zinc-500">
+                              {group.name}
+                            </span>
+                            <div className="flex flex-wrap gap-0.5">
+                              {opts.map((opt) => {
+                                const active = activeValue === opt.label;
+                                return (
+                                  <button
+                                    key={opt.label}
+                                    onClick={() => toggleCondition(group.id, opt.label, role)}
+                                    className={`rounded-full px-1.5 py-0.5 text-[9px] font-medium transition-colors ${
+                                      active
+                                        ? "bg-indigo-500 text-white"
+                                        : "bg-indigo-500/15 text-indigo-300 hover:bg-indigo-500/30"
+                                    }`}
+                                  >
+                                    {opt.label}
+                                  </button>
+                                );
+                              })}
+                            </div>
                           </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               );
             })}
