@@ -69,6 +69,7 @@ function StateRow({ node, taxonomy, onUpdate, onDelete, onTaxonomyChange }: { no
         <div className="px-4 pb-4 pt-1 bg-zinc-900/50">
           <StateEditor
             data={{
+              state_id: node.state_id,
               label: node.label,
               position_name: node.position_name,
               conditions: node.conditions,

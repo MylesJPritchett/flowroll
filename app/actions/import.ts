@@ -282,7 +282,15 @@ export async function importNotation(input: string): Promise<ImportResult> {
     actionsCreated++;
   }
 
-  // --- 4. Create state graph nodes ---
+  // --- 4. Create taxonomy states ---
+  // Lookup for matching existing states: "positionId:name" -> state
+  const statesByKey = new Map<string, { id: string; position_id: string; name: string }>();
+  if (taxonomy.states) {
+    for (const s of taxonomy.states) {
+      statesByKey.set(`${s.position_id}:${s.name.toLowerCase()}`, s);
+    }
+  }
+
   for (const s of parsed.states) {
     // Resolve position
     const pos = positionsByName.get(s.positionName.toLowerCase());
@@ -290,6 +298,12 @@ export async function importNotation(input: string): Promise<ImportResult> {
       warnings.push(`Unknown position "${s.positionName}" for state`);
       continue;
     }
+
+    const stateName = s.label || s.positionName;
+    const stateKey = `${pos.id}:${stateName.toLowerCase()}`;
+
+    // Skip if already exists
+    if (statesByKey.has(stateKey)) continue;
 
     // Resolve conditions to StateCondition format, auto-creating missing groups/options
     const conditions: { groupId: string; value: string; role: "A" | "B" }[] = [];
@@ -308,38 +322,43 @@ export async function importNotation(input: string): Promise<ImportResult> {
       conditions.push({ groupId: group.id, value: c.value, role: "B" });
     }
 
-    const nodeId = `import-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const metadata = {
-      type: "state",
-      label: s.label,
-      conditions,
-      giNogi: s.giNogi,
-    };
+    const { data: maxRow } = await supabase.from("states").select("sort_order").eq("position_id", pos.id).order("sort_order", { ascending: false }).limit(1).single();
+    const sortOrder = (maxRow?.sort_order ?? -1) + 1;
 
-    const { error } = await supabase.from("graph_nodes").insert({
-      id: nodeId,
-      user_id: userId,
-      label: pos.name,
-      description: s.description,
-      position_x: Math.random() * 600 + 100,
-      position_y: Math.random() * 600 + 100,
-      metadata,
-    });
+    const { data, error } = await supabase
+      .from("states")
+      .insert({
+        position_id: pos.id,
+        name: stateName,
+        description: s.description,
+        conditions,
+        gi_nogi: s.giNogi,
+        sort_order: sortOrder,
+        created_by: userId,
+        is_official: false,
+        is_public: true,
+      })
+      .select()
+      .single();
 
     if (error) {
-      warnings.push(`Failed to create state node for "${s.positionName}": ${error.message}`);
+      warnings.push(`Failed to create state "${stateName}": ${error.message}`);
       continue;
     }
 
+    statesByKey.set(stateKey, data);
     statesCreated++;
   }
 
   // --- 5. Create flow graphs ---
-  // Build a set of known state display names from parsed state definitions
+  // Build a set of known state display names from parsed state definitions + taxonomy states
   const stateLabels = new Set<string>();
   for (const s of parsed.states) {
     stateLabels.add(s.positionName.toLowerCase());
     if (s.label) stateLabels.add(s.label.toLowerCase());
+  }
+  for (const s of statesByKey.values()) {
+    stateLabels.add(s.name.toLowerCase());
   }
 
   // Helper: resolve step type using taxonomy + state definitions
@@ -387,7 +406,24 @@ export async function importNotation(input: string): Promise<ImportResult> {
       normalizedSteps.push(step);
     }
 
-    const flowName = normalizedSteps.map((s) => s.label).join(" → ");
+    // Generate a short name: "Main Action from Starting Position"
+    const firstState = normalizedSteps.find((s) => s.type === "state");
+    const lastState = [...normalizedSteps].reverse().find((s) => s.type === "state" || s.type === "finish");
+    const actions = normalizedSteps.filter((s) => s.type === "action");
+    // Pick the last action as the "main" one (the culminating technique)
+    const mainAction = actions.length > 0 ? actions[actions.length - 1] : null;
+    let flowName: string;
+    if (mainAction && firstState) {
+      flowName = `${mainAction.label} from ${firstState.label}`;
+      if (lastState && lastState !== firstState && lastState.type === "finish") {
+        flowName += ` → ${lastState.label}`;
+      }
+    } else {
+      // Fallback: first and last step
+      flowName = normalizedSteps.length > 0
+        ? `${normalizedSteps[0].label} → ${normalizedSteps[normalizedSteps.length - 1].label}`
+        : "Flow";
+    }
 
     // Create a graph container
     const { data: graph, error: graphError } = await supabase
@@ -423,25 +459,56 @@ export async function importNotation(input: string): Promise<ImportResult> {
         });
         if (error) warnings.push(`Failed to create flow node "${step.label}": ${error.message}`);
       } else if (step.type === "state") {
-        // Try to match a parsed state definition (by label or position name)
-        const matchedState = parsed.states.find(
+        // Try to find a taxonomy state by name, or fall back to a position
+        let matchedTaxState: { id: string; position_id: string; name: string } | undefined;
+        let pos = positionsByName.get(step.label.toLowerCase());
+
+        // Check taxonomy states (by name)
+        for (const s of statesByKey.values()) {
+          if (s.name.toLowerCase() === step.label.toLowerCase()) {
+            matchedTaxState = s;
+            break;
+          }
+        }
+
+        // If we found a taxonomy state, get its position
+        if (matchedTaxState) {
+          pos = [...positionsByName.values()].find((p) => p.id === matchedTaxState!.position_id);
+        }
+
+        // Also check parsed states for condition data
+        const matchedParsed = parsed.states.find(
           (s) => (s.label && s.label.toLowerCase() === step.label.toLowerCase())
             || s.positionName.toLowerCase() === step.label.toLowerCase(),
         );
-        const pos = positionsByName.get(
-          (matchedState?.positionName ?? step.label).toLowerCase(),
-        );
-        const posName = pos?.name ?? matchedState?.positionName ?? step.label;
-        const stateLabel = matchedState?.label ?? (pos && pos.name !== step.label ? step.label : "");
+        if (!pos && matchedParsed) {
+          pos = positionsByName.get(matchedParsed.positionName.toLowerCase());
+        }
 
-        // Resolve conditions from matched state definition if available
-        const flowConditions: { groupId: string; value: string; role: "A" | "B" }[] = [];
-        if (matchedState) {
-          for (const c of matchedState.roleA) {
+        const posName = pos?.name ?? step.label;
+        const stateLabel = matchedTaxState?.name ?? matchedParsed?.label ?? (pos && pos.name !== step.label ? step.label : "");
+
+        // Get conditions from taxonomy state or parsed state
+        let flowConditions: { groupId: string; value: string; role: "A" | "B" }[] = [];
+        if (matchedTaxState) {
+          // Load full state data from statesByKey doesn't have conditions, check parsed
+          // The taxonomy state conditions are already in the DB; for the graph node, use parsed state conditions if available
+          if (matchedParsed) {
+            for (const c of matchedParsed.roleA) {
+              const group = groupsByName.get(c.group.toLowerCase());
+              if (group) flowConditions.push({ groupId: group.id, value: c.value, role: "A" });
+            }
+            for (const c of matchedParsed.roleB) {
+              const group = groupsByName.get(c.group.toLowerCase());
+              if (group) flowConditions.push({ groupId: group.id, value: c.value, role: "B" });
+            }
+          }
+        } else if (matchedParsed) {
+          for (const c of matchedParsed.roleA) {
             const group = groupsByName.get(c.group.toLowerCase());
             if (group) flowConditions.push({ groupId: group.id, value: c.value, role: "A" });
           }
-          for (const c of matchedState.roleB) {
+          for (const c of matchedParsed.roleB) {
             const group = groupsByName.get(c.group.toLowerCase());
             if (group) flowConditions.push({ groupId: group.id, value: c.value, role: "B" });
           }
@@ -452,10 +519,10 @@ export async function importNotation(input: string): Promise<ImportResult> {
           user_id: userId,
           graph_id: graphId,
           label: posName,
-          description: matchedState?.description ?? "",
+          description: matchedParsed?.description ?? "",
           position_x: idx * xSpacing + 100,
           position_y: 200,
-          metadata: { type: "state", label: stateLabel, conditions: flowConditions, giNogi: matchedState?.giNogi ?? "" },
+          metadata: { type: "state", state_id: matchedTaxState?.id ?? "", label: stateLabel, conditions: flowConditions, giNogi: matchedParsed?.giNogi ?? "" },
         });
         if (error) warnings.push(`Failed to create flow node "${step.label}": ${error.message}`);
       } else {

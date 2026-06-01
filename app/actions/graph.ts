@@ -11,6 +11,7 @@ export type GiNogi = "gi" | "nogi" | "";
 export interface GraphStateNode {
   id: string;
   type: "state";
+  state_id: string;
   label: string;
   position_name: string;
   conditions: StateCondition[];
@@ -117,6 +118,7 @@ function deserializeNodes(rows: Record<string, unknown>[]): GraphNode[] {
     return {
       id: row.id as string,
       type: "state" as const,
+      state_id: (meta.state_id as string) ?? "",
       label: (meta.label as string) ?? "",
       position_name: (row.label as string) ?? "New State",
       description: (row.description as string) ?? "",
@@ -190,7 +192,7 @@ export async function saveGraph(
           description: n.description,
           position_x: n.position_x,
           position_y: n.position_y,
-          metadata: { type: "state", label: n.label, conditions: n.conditions, giNogi: n.giNogi },
+          metadata: { type: "state", state_id: n.state_id, label: n.label, conditions: n.conditions, giNogi: n.giNogi },
         };
       }),
     );
@@ -264,7 +266,7 @@ export async function saveFlowGraph(
           id: n.id, user_id: userId, graph_id: graphId,
           label: n.position_name, description: n.description,
           position_x: n.position_x, position_y: n.position_y,
-          metadata: { type: "state", label: n.label, conditions: n.conditions, giNogi: n.giNogi },
+          metadata: { type: "state", state_id: n.state_id, label: n.label, conditions: n.conditions, giNogi: n.giNogi },
         };
       }),
     );

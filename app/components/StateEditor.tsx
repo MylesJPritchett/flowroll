@@ -4,9 +4,10 @@ import { useState, useEffect, useRef } from "react";
 import { getRoleLabels, getFilteredOptions, getAllowedOptionIds } from "../concepts";
 import type { StateCondition, Taxonomy } from "../concepts";
 import type { GiNogi } from "../actions/graph";
-import { addPosition } from "../actions/taxonomy";
+import { addPosition, addState } from "../actions/taxonomy";
 
 export interface StateData {
+  state_id: string;
   label: string;
   position_name: string;
   conditions: StateCondition[];
@@ -23,6 +24,7 @@ interface StateEditorProps {
 }
 
 export default function StateEditor({ data, taxonomy, focusTitle, onChange, onTaxonomyChange }: StateEditorProps) {
+  const [stateId, setStateId] = useState(data.state_id);
   const [label, setLabel] = useState(data.label);
   const [positionName, setPositionName] = useState(data.position_name);
   const [conditions, setConditions] = useState<StateCondition[]>(data.conditions);
@@ -35,6 +37,7 @@ export default function StateEditor({ data, taxonomy, focusTitle, onChange, onTa
 
   // Sync from parent when data identity changes
   useEffect(() => {
+    setStateId(data.state_id);
     setLabel(data.label);
     setPositionName(data.position_name);
     setConditions(data.conditions);
@@ -52,6 +55,7 @@ export default function StateEditor({ data, taxonomy, focusTitle, onChange, onTa
 
   const emit = (patch: Partial<StateData>) => {
     const next = {
+      state_id: patch.state_id ?? stateId,
       label: patch.label ?? label,
       position_name: patch.position_name ?? positionName,
       conditions: patch.conditions ?? conditions,
@@ -60,6 +64,10 @@ export default function StateEditor({ data, taxonomy, focusTitle, onChange, onTa
     };
     onChange(next);
   };
+
+  // States for the current position
+  const pos = taxonomy.positions.find((p) => p.name === positionName);
+  const positionStates = pos ? taxonomy.states.filter((s) => s.position_id === pos.id) : [];
 
   const roles = getRoleLabels(positionName, taxonomy.positions);
 
@@ -153,6 +161,33 @@ export default function StateEditor({ data, taxonomy, focusTitle, onChange, onTa
           </div>
         )}
         <div className="mt-1 text-[10px] text-zinc-500">{roles.roleA} / {roles.roleB}</div>
+        {positionStates.length > 0 && (
+          <div className="mt-1.5">
+            <div className="text-[10px] text-zinc-500 mb-0.5">Load state preset:</div>
+            <div className="flex flex-wrap gap-1">
+              {positionStates.map((s) => (
+                <button
+                  key={s.id}
+                  onClick={() => {
+                    setStateId(s.id);
+                    setLabel(s.name);
+                    setConditions(s.conditions);
+                    setGiNogi(s.gi_nogi);
+                    setDescription(s.description);
+                    emit({ state_id: s.id, label: s.name, conditions: s.conditions, giNogi: s.gi_nogi, description: s.description });
+                  }}
+                  className={`rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                    stateId === s.id
+                      ? "bg-green-600 text-white"
+                      : "bg-zinc-600/30 text-zinc-300 hover:bg-zinc-600/50"
+                  }`}
+                >
+                  {s.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Gi / No-Gi */}
@@ -264,6 +299,23 @@ export default function StateEditor({ data, taxonomy, focusTitle, onChange, onTa
           })}
         </div>
       </div>
+
+      {/* Save as State */}
+      {pos && label.trim() && !stateId && (
+        <button
+          onClick={async () => {
+            const created = await addState(pos.id, label.trim(), description, conditions, giNogi);
+            if (created) {
+              setStateId(created.id);
+              emit({ state_id: created.id });
+              onTaxonomyChange?.();
+            }
+          }}
+          className="w-full rounded-md border border-green-600/50 bg-green-950/30 px-3 py-1.5 text-xs font-medium text-green-400 transition-colors hover:bg-green-950/50"
+        >
+          Save &quot;{label.trim()}&quot; as reusable state
+        </button>
+      )}
 
       {/* Notes */}
       <div>

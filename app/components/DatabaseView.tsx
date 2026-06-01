@@ -18,13 +18,16 @@ import {
   deleteAction,
   setOfficial,
   setPositionRequirement,
+  addState,
+  updateState,
+  deleteState,
   type Position,
   type ConditionGroup,
   type Action,
   type PositionRequirement,
   type ConditionRef,
 } from "../actions/taxonomy";
-import type { ConditionRefRole } from "../concepts";
+import type { ConditionRefRole, State } from "../concepts";
 
 function OfficialBadge() {
   return <span className="text-green-400 text-[10px]" title="Official">&#10003;</span>;
@@ -46,6 +49,7 @@ export default function DatabaseView({ mode, userId }: DatabaseViewProps) {
   const [actions, setActions] = useState<Action[]>([]);
   const [pcMap, setPcMap] = useState<Record<string, Set<string>>>({});
   const [posReqs, setPosReqs] = useState<Record<string, PositionRequirement[]>>({});
+  const [states, setStates] = useState<State[]>([]);
   const [loading, setLoading] = useState(true);
 
   const tabs = ["positions", "conditions", "actions", "mappings"] as const;
@@ -58,6 +62,7 @@ export default function DatabaseView({ mode, userId }: DatabaseViewProps) {
         let pos = data.positions;
         let grps = data.conditionGroups;
         let acts = data.actions;
+        let sts = data.states;
         // In admin mode, only show official items
         if (mode === "admin") {
           pos = pos.filter((p) => p.is_official);
@@ -66,10 +71,12 @@ export default function DatabaseView({ mode, userId }: DatabaseViewProps) {
             options: g.options.filter((o) => o.is_official),
           }));
           acts = acts.filter((a) => a.is_official);
+          sts = sts.filter((s) => s.is_official);
         }
         setPositions(pos);
         setGroups(grps);
         setActions(acts);
+        setStates(sts);
         const map: Record<string, Set<string>> = {};
         for (const [key, ids] of Object.entries(data.positionConditions)) {
           map[key] = new Set(ids);
@@ -159,6 +166,7 @@ export default function DatabaseView({ mode, userId }: DatabaseViewProps) {
                 position={pos}
                 groups={groups}
                 requirements={posReqs[pos.id] ?? []}
+                states={states.filter((s) => s.position_id === pos.id)}
                 editable={canEdit(pos)}
                 mode={mode}
                 onUpdate={(updates) => {
@@ -176,6 +184,18 @@ export default function DatabaseView({ mode, userId }: DatabaseViewProps) {
                     }
                     return { ...prev, [pos.id]: current.filter((r) => !(r.condition_option_id === optionId && r.role === role)) };
                   });
+                }}
+                onAddState={async () => {
+                  const s = await addState(pos.id, "New State", "", [], "");
+                  if (s) setStates((prev) => [...prev, s]);
+                }}
+                onUpdateState={(id, updates) => {
+                  updateState(id, updates);
+                  setStates((prev) => prev.map((s) => s.id === id ? { ...s, ...updates } : s));
+                }}
+                onDeleteState={(id) => {
+                  deleteState(id);
+                  setStates((prev) => prev.filter((s) => s.id !== id));
                 }}
               />
             ))}
@@ -418,22 +438,30 @@ function PositionRowWithReqs({
   position,
   groups,
   requirements,
+  states,
   editable,
   mode,
   onUpdate,
   onDelete,
   onToggleOfficial,
   onToggleRequirement,
+  onAddState,
+  onUpdateState,
+  onDeleteState,
 }: {
   position: Position;
   groups: ConditionGroup[];
   requirements: PositionRequirement[];
+  states: State[];
   editable: boolean;
   mode: "database" | "admin";
   onUpdate: (updates: { name?: string; description?: string; role_a?: string; role_b?: string }) => void;
   onDelete: () => void;
   onToggleOfficial: () => void;
   onToggleRequirement: (optionId: string, role: "A" | "B", required: boolean) => void;
+  onAddState: () => void;
+  onUpdateState: (id: string, updates: Partial<State>) => void;
+  onDeleteState: (id: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const isRequired = (optionId: string, role: "A" | "B") =>
@@ -486,6 +514,64 @@ function PositionRowWithReqs({
               rows={2}
               className={`w-full rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-100 outline-none focus:border-indigo-500 resize-y ${!editable ? "opacity-50" : ""}`}
             />
+          </div>
+          <div className="mb-3">
+            <div className="flex items-center justify-between mb-1">
+              <div className="text-[10px] font-medium text-zinc-400">Named States</div>
+              {editable && (
+                <button
+                  onClick={onAddState}
+                  className="text-[9px] font-medium text-indigo-400 hover:text-indigo-300 transition-colors"
+                >
+                  + Add State
+                </button>
+              )}
+            </div>
+            {states.length > 0 ? (
+              <div className="space-y-1">
+                {states.map((s) => (
+                  <div key={s.id} className="rounded border border-zinc-700/50 bg-zinc-800/50 px-2 py-1.5">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={s.name}
+                        disabled={!editable}
+                        onChange={(e) => onUpdateState(s.id, { name: e.target.value })}
+                        className={`flex-1 bg-transparent text-xs font-medium text-zinc-200 outline-none ${!editable ? "opacity-50" : ""}`}
+                      />
+                      {s.gi_nogi && (
+                        <span className="text-[9px] text-zinc-500">{s.gi_nogi === "gi" ? "Gi" : "No-Gi"}</span>
+                      )}
+                      {editable && (
+                        <button onClick={() => onDeleteState(s.id)} className="text-zinc-500 hover:text-red-400 text-xs transition-colors">&times;</button>
+                      )}
+                    </div>
+                    {s.conditions.length > 0 && (
+                      <div className="mt-1 flex flex-wrap gap-0.5">
+                        {s.conditions.map((c) => {
+                          const roleLabel = c.role === "A" ? position.role_a : position.role_b;
+                          return (
+                            <span
+                              key={`${c.groupId}-${c.role}`}
+                              className={`rounded-full px-1.5 py-0.5 text-[9px] font-medium ${
+                                c.role === "A" ? "bg-blue-500/20 text-blue-300" : "bg-amber-500/20 text-amber-300"
+                              }`}
+                            >
+                              <span className="opacity-60">{roleLabel}</span> {c.value}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {s.description && (
+                      <div className="mt-0.5 text-[9px] text-zinc-500">{s.description}</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-[9px] text-zinc-600">No named states yet.</p>
+            )}
           </div>
           <div className="text-[10px] font-medium text-zinc-400 mb-2">Required Conditions</div>
           <p className="text-[9px] text-zinc-600 mb-2">Toggle conditions that MUST be present for this position to be valid.</p>

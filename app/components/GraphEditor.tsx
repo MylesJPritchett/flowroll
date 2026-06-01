@@ -253,6 +253,7 @@ function toRFNodes(dbNodes: GraphNode[], dbEdges: GraphEdge[], taxonomy: Taxonom
       type: "state",
       position: { x: n.position_x, y: n.position_y },
       data: {
+        state_id: n.state_id,
         label: n.label,
         position_name: n.position_name,
         conditions: n.conditions,
@@ -301,6 +302,7 @@ function fromRFNodes(nodes: Node[]): GraphNode[] {
     return {
       id: n.id,
       type: "state" as const,
+      state_id: (d.state_id as string) ?? "",
       label: (d.label as string) ?? "",
       position_name: (d.position_name as string) ?? "New State",
       description: (d.description as string) ?? "",
@@ -553,7 +555,7 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, flowGraphs
       id,
       type: "state",
       position: { x: Math.random() * 400 + 100, y: Math.random() * 400 + 100 },
-      data: { label: "", position_name: "New State", conditions: [], giNogi: "", description: "" },
+      data: { state_id: "", label: "", position_name: "New State", conditions: [], giNogi: "", description: "" },
     };
     setNodes((nds) => [...nds, newNode]);
     setSelectedStateNode(newNode);
@@ -628,7 +630,7 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, flowGraphs
   }, []);
 
   const updateStateNode = useCallback(
-    (id: string, data: { label: string; position_name: string; conditions: StateCondition[]; giNogi: GiNogi; description: string }) => {
+    (id: string, data: { state_id: string; label: string; position_name: string; conditions: StateCondition[]; giNogi: GiNogi; description: string }) => {
       setNodes((nds) => nds.map((n) => (n.id === id ? { ...n, data: { ...n.data, ...data } } : n)));
       setSelectedStateNode((prev) => (prev && prev.id === id ? { ...prev, data: { ...prev.data, ...data } } : prev));
     },
@@ -703,7 +705,7 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, flowGraphs
           id: nodeId,
           type: "state",
           position: flowPosition,
-          data: { label: "", position_name: expectedName, conditions: expectedConditions, giNogi: expectedGiNogi, description: "" },
+          data: { state_id: "", label: "", position_name: expectedName, conditions: expectedConditions, giNogi: expectedGiNogi, description: "" },
         };
         setNodes((nds) => [...nds, newNode]);
         setEdges((eds) => [...eds, { id: edgeId, source: actionNodeId, target: nodeId, ...edgeStyle } as Edge]);
@@ -724,7 +726,7 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, flowGraphs
       id: nodeId,
       type: "state",
       position: flowPosition,
-      data: { label: "", position_name: "New State", conditions: [], giNogi: "", description: "" },
+      data: { state_id: "", label: "", position_name: "New State", conditions: [], giNogi: "", description: "" },
     };
     setNodes((nds) => [...nds, newNode]);
     setEdges((eds) => [...eds, { id: edgeId, source: actionNodeId, target: nodeId, ...edgeStyle } as Edge]);
@@ -782,7 +784,7 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, flowGraphs
               setSelectedStateNode(null);
               setSelectedActionNode(null);
             }}
-            className="rounded-lg border border-zinc-600 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-indigo-500 shadow-md"
+            className="rounded-lg border border-zinc-600 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-indigo-500 shadow-md max-w-[250px] truncate"
           >
             <option value="">My Graph</option>
             {flowGraphs.map((f) => (

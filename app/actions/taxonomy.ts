@@ -62,6 +62,22 @@ export interface PositionRequirement {
   role: "A" | "B";
 }
 
+export interface StateConditionEntry {
+  groupId: string;
+  value: string;
+  role: "A" | "B";
+}
+
+export interface State extends OwnershipFields {
+  id: string;
+  position_id: string;
+  name: string;
+  description: string;
+  conditions: StateConditionEntry[];
+  gi_nogi: "" | "gi" | "nogi";
+  sort_order: number;
+}
+
 // --- Helpers ---
 
 async function getUserId(): Promise<string | null> {
@@ -75,6 +91,7 @@ export async function loadTaxonomy(): Promise<{
   positions: Position[];
   conditionGroups: ConditionGroup[];
   actions: Action[];
+  states: State[];
   positionConditions: Record<string, string[]>;
   positionRequirements: Record<string, PositionRequirement[]>;
 } | null> {
@@ -86,15 +103,16 @@ export async function loadTaxonomy(): Promise<{
     ? `is_official.eq.true,created_by.eq.${userId},is_public.eq.true`
     : "is_official.eq.true,is_public.eq.true";
 
-  const [posResult, groupsResult, optionsResult, actionsResult] = await Promise.all([
+  const [posResult, groupsResult, optionsResult, actionsResult, statesResult] = await Promise.all([
     supabase.from("positions").select("*").or(orFilter).order("sort_order"),
     supabase.from("condition_groups").select("*").or(orFilter).order("sort_order"),
     supabase.from("condition_options").select("*").or(orFilter).order("sort_order"),
     supabase.from("actions").select("*").or(orFilter).order("sort_order"),
+    supabase.from("states").select("*").or(orFilter).order("sort_order"),
   ]);
 
-  if (posResult.error || groupsResult.error || optionsResult.error || actionsResult.error) {
-    console.error("Failed to load taxonomy:", posResult.error, groupsResult.error, optionsResult.error, actionsResult.error);
+  if (posResult.error || groupsResult.error || optionsResult.error || actionsResult.error || statesResult.error) {
+    console.error("Failed to load taxonomy:", posResult.error, groupsResult.error, optionsResult.error, actionsResult.error, statesResult.error);
     return null;
   }
 
@@ -149,7 +167,7 @@ export async function loadTaxonomy(): Promise<{
     positionRequirements[row.position_id].push(row);
   }
 
-  return { positions: posResult.data as Position[], conditionGroups, actions: actionsResult.data as Action[], positionConditions, positionRequirements };
+  return { positions: posResult.data as Position[], conditionGroups, actions: actionsResult.data as Action[], states: statesResult.data as State[], positionConditions, positionRequirements };
 }
 
 // --- Positions CRUD ---
@@ -334,6 +352,38 @@ export async function deleteAction(id: string): Promise<boolean> {
   return true;
 }
 
+// --- States CRUD ---
+
+export async function addState(positionId: string, name: string, description: string, conditions: StateConditionEntry[], giNogi: "" | "gi" | "nogi"): Promise<State | null> {
+  const userId = await getUserId();
+  const supabase = createSupabaseServer();
+  const { data: maxRow } = await supabase.from("states").select("sort_order").eq("position_id", positionId).order("sort_order", { ascending: false }).limit(1).single();
+  const sortOrder = (maxRow?.sort_order ?? -1) + 1;
+
+  const { data, error } = await supabase
+    .from("states")
+    .insert({ position_id: positionId, name, description, conditions, gi_nogi: giNogi, sort_order: sortOrder, created_by: userId, is_official: false, is_public: true })
+    .select()
+    .single();
+
+  if (error) { console.error("Failed to add state:", error); return null; }
+  return data;
+}
+
+export async function updateState(id: string, updates: { name?: string; description?: string; conditions?: StateConditionEntry[]; gi_nogi?: "" | "gi" | "nogi"; is_public?: boolean }): Promise<boolean> {
+  const supabase = createSupabaseServer();
+  const { error } = await supabase.from("states").update(updates).eq("id", id);
+  if (error) { console.error("Failed to update state:", error); return false; }
+  return true;
+}
+
+export async function deleteState(id: string): Promise<boolean> {
+  const supabase = createSupabaseServer();
+  const { error } = await supabase.from("states").delete().eq("id", id);
+  if (error) { console.error("Failed to delete state:", error); return false; }
+  return true;
+}
+
 // --- Position Requirements ---
 
 export async function setPositionRequirement(
@@ -363,7 +413,7 @@ export async function setPositionRequirement(
 // --- Admin: Toggle Official ---
 
 export async function setOfficial(
-  table: "positions" | "condition_groups" | "condition_options" | "actions",
+  table: "positions" | "condition_groups" | "condition_options" | "actions" | "states",
   id: string,
   isOfficial: boolean,
 ): Promise<boolean> {

@@ -11,7 +11,7 @@ interface NodeEditorProps {
   taxonomy: Taxonomy;
   focusTitle?: boolean;
   position: { x: number; y: number };
-  onUpdate: (id: string, data: { label: string; position_name: string; conditions: StateCondition[]; giNogi: GiNogi; description: string }) => void;
+  onUpdate: (id: string, data: { state_id: string; label: string; position_name: string; conditions: StateCondition[]; giNogi: GiNogi; description: string }) => void;
   onDelete: (id: string) => void;
   onClose: () => void;
   onTaxonomyChange?: () => void;
@@ -20,6 +20,7 @@ interface NodeEditorProps {
 export default function NodeEditor({ node, taxonomy, focusTitle, position, onUpdate, onDelete, onClose, onTaxonomyChange }: NodeEditorProps) {
   const data = node.data as Record<string, unknown>;
   const stateData: StateData = {
+    state_id: (data.state_id as string) ?? "",
     label: (data.label as string) ?? "",
     position_name: (data.position_name as string) ?? "New State",
     conditions: (data.conditions as StateCondition[]) ?? [],
