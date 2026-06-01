@@ -11,6 +11,7 @@ export type GiNogi = "gi" | "nogi" | "";
 export interface GraphStateNode {
   id: string;
   type: "state";
+  label: string;
   position_name: string;
   conditions: StateCondition[];
   giNogi: GiNogi;
@@ -29,7 +30,15 @@ export interface GraphActionNode {
   position_y: number;
 }
 
-export type GraphNode = GraphStateNode | GraphActionNode;
+export interface GraphFinishNode {
+  id: string;
+  type: "finish";
+  label: string;
+  position_x: number;
+  position_y: number;
+}
+
+export type GraphNode = GraphStateNode | GraphActionNode | GraphFinishNode;
 
 // --- Edge type (simple connector) ---
 
@@ -79,7 +88,11 @@ export async function loadGraph(): Promise<{
     return null;
   }
 
-  const nodes: GraphNode[] = nodesResult.data.map((row: Record<string, unknown>) => {
+  return { nodes: deserializeNodes(nodesResult.data), edges: deserializeEdges(edgesResult.data) };
+}
+
+function deserializeNodes(rows: Record<string, unknown>[]): GraphNode[] {
+  return rows.map((row) => {
     const meta = (row.metadata as Record<string, unknown>) ?? {};
     if (meta.type === "action") {
       return {
@@ -92,9 +105,19 @@ export async function loadGraph(): Promise<{
         position_y: row.position_y as number,
       };
     }
+    if (meta.type === "finish") {
+      return {
+        id: row.id as string,
+        type: "finish" as const,
+        label: (row.label as string) ?? "Submitted",
+        position_x: row.position_x as number,
+        position_y: row.position_y as number,
+      };
+    }
     return {
       id: row.id as string,
       type: "state" as const,
+      label: (meta.label as string) ?? "",
       position_name: (row.label as string) ?? "New State",
       description: (row.description as string) ?? "",
       position_x: row.position_x as number,
@@ -103,14 +126,14 @@ export async function loadGraph(): Promise<{
       giNogi: (meta.giNogi as GiNogi) ?? "",
     };
   });
+}
 
-  const edges: GraphEdge[] = edgesResult.data.map((row: Record<string, unknown>) => ({
+function deserializeEdges(rows: Record<string, unknown>[]): GraphEdge[] {
+  return rows.map((row) => ({
     id: row.id as string,
     source_node_id: row.source_node_id as string,
     target_node_id: row.target_node_id as string,
   }));
-
-  return { nodes, edges };
 }
 
 // --- Save ---
@@ -149,6 +172,17 @@ export async function saveGraph(
             metadata: { type: "action", action_id: n.action_id, actor: n.actor },
           };
         }
+        if (n.type === "finish") {
+          return {
+            id: n.id,
+            user_id: userId,
+            label: n.label,
+            description: "",
+            position_x: n.position_x,
+            position_y: n.position_y,
+            metadata: { type: "finish" },
+          };
+        }
         return {
           id: n.id,
           user_id: userId,
@@ -156,7 +190,7 @@ export async function saveGraph(
           description: n.description,
           position_x: n.position_x,
           position_y: n.position_y,
-          metadata: { type: "state", conditions: n.conditions, giNogi: n.giNogi },
+          metadata: { type: "state", label: n.label, conditions: n.conditions, giNogi: n.giNogi },
         };
       }),
     );
@@ -232,38 +266,11 @@ export async function loadGraphById(graphId: string): Promise<{
 
   if (graphResult.error || nodesResult.error || edgesResult.error) return null;
 
-  const nodes: GraphNode[] = nodesResult.data.map((row: Record<string, unknown>) => {
-    const meta = (row.metadata as Record<string, unknown>) ?? {};
-    if (meta.type === "action") {
-      return {
-        id: row.id as string,
-        type: "action" as const,
-        action_id: (meta.action_id as string) ?? "",
-        action_name: (row.label as string) ?? "",
-        actor: (meta.actor as "A" | "B") ?? "A",
-        position_x: row.position_x as number,
-        position_y: row.position_y as number,
-      };
-    }
-    return {
-      id: row.id as string,
-      type: "state" as const,
-      position_name: (row.label as string) ?? "New State",
-      description: (row.description as string) ?? "",
-      position_x: row.position_x as number,
-      position_y: row.position_y as number,
-      conditions: (meta.conditions as StateCondition[]) ?? [],
-      giNogi: (meta.giNogi as GiNogi) ?? "",
-    };
-  });
-
-  const edges: GraphEdge[] = edgesResult.data.map((row: Record<string, unknown>) => ({
-    id: row.id as string,
-    source_node_id: row.source_node_id as string,
-    target_node_id: row.target_node_id as string,
-  }));
-
-  return { graph: graphResult.data as Graph, nodes, edges };
+  return {
+    graph: graphResult.data as Graph,
+    nodes: deserializeNodes(nodesResult.data),
+    edges: deserializeEdges(edgesResult.data),
+  };
 }
 
 export async function createGraph(name: string, description = ""): Promise<Graph | null> {

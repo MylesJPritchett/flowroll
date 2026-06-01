@@ -20,9 +20,10 @@ import {
 import "@xyflow/react/dist/style.css";
 import BJJNode from "./BJJNode";
 import ActionNode from "./ActionNode";
+import FinishNode from "./FinishNode";
 import NodeEditor from "./NodeEditor";
 import ActionNodeEditor from "./ActionNodeEditor";
-import type { GraphNode, GraphEdge, GraphStateNode, GraphActionNode } from "../actions/graph";
+import type { GraphNode, GraphEdge, GraphStateNode, GraphActionNode, GraphFinishNode } from "../actions/graph";
 import { getRoleLabels, resolveConditionRole } from "../concepts";
 import type { StateCondition, Taxonomy } from "../concepts";
 import type { GiNogi } from "../actions/graph";
@@ -30,6 +31,7 @@ import type { GiNogi } from "../actions/graph";
 const nodeTypes: NodeTypes = {
   state: BJJNode,
   action: ActionNode,
+  finish: FinishNode,
 };
 
 const edgeStyle: Partial<Edge> = {
@@ -236,6 +238,14 @@ function toRFNodes(dbNodes: GraphNode[], dbEdges: GraphEdge[], taxonomy: Taxonom
         },
       };
     }
+    if (n.type === "finish") {
+      return {
+        id: n.id,
+        type: "finish",
+        position: { x: n.position_x, y: n.position_y },
+        data: { label: n.label },
+      };
+    }
     const roles = getRoleLabels(n.position_name, taxonomy.positions);
     const warnings = getStateWarnings(n, taxonomy);
     return {
@@ -243,6 +253,7 @@ function toRFNodes(dbNodes: GraphNode[], dbEdges: GraphEdge[], taxonomy: Taxonom
       type: "state",
       position: { x: n.position_x, y: n.position_y },
       data: {
+        label: n.label,
         position_name: n.position_name,
         conditions: n.conditions,
         giNogi: n.giNogi,
@@ -278,9 +289,19 @@ function fromRFNodes(nodes: Node[]): GraphNode[] {
         position_y: n.position.y,
       };
     }
+    if (n.type === "finish") {
+      return {
+        id: n.id,
+        type: "finish" as const,
+        label: (d.label as string) ?? "Submitted",
+        position_x: n.position.x,
+        position_y: n.position.y,
+      };
+    }
     return {
       id: n.id,
       type: "state" as const,
+      label: (d.label as string) ?? "",
       position_name: (d.position_name as string) ?? "New State",
       description: (d.description as string) ?? "",
       conditions: (d.conditions as StateCondition[]) ?? [],
@@ -502,7 +523,7 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, onNodesCha
       id,
       type: "state",
       position: { x: Math.random() * 400 + 100, y: Math.random() * 400 + 100 },
-      data: { position_name: "New State", conditions: [], giNogi: "", description: "" },
+      data: { label: "", position_name: "New State", conditions: [], giNogi: "", description: "" },
     };
     setNodes((nds) => [...nds, newNode]);
     setSelectedStateNode(newNode);
@@ -512,9 +533,24 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, onNodesCha
     if (rect) setEditorPos(clampEditorPos(rect.left + rect.width / 2, rect.top + rect.height / 2));
   }, [setNodes, clampEditorPos]);
 
+  const addFinishNode = useCallback(() => {
+    const id = `${Date.now()}`;
+    const newNode: Node = {
+      id,
+      type: "finish",
+      position: { x: Math.random() * 400 + 100, y: Math.random() * 400 + 100 },
+      data: { label: "Submitted" },
+    };
+    setNodes((nds) => [...nds, newNode]);
+  }, [setNodes]);
+
   const onNodeClick = useCallback((e: React.MouseEvent, node: Node) => {
     if (node.type === "action") {
       setSelectedActionNode(node);
+      setSelectedStateNode(null);
+    } else if (node.type === "finish") {
+      // Finish nodes are not editable, just deselect others
+      setSelectedActionNode(null);
       setSelectedStateNode(null);
     } else {
       setSelectedStateNode(node);
@@ -562,7 +598,7 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, onNodesCha
   }, []);
 
   const updateStateNode = useCallback(
-    (id: string, data: { position_name: string; conditions: StateCondition[]; giNogi: GiNogi; description: string }) => {
+    (id: string, data: { label: string; position_name: string; conditions: StateCondition[]; giNogi: GiNogi; description: string }) => {
       setNodes((nds) => nds.map((n) => (n.id === id ? { ...n, data: { ...n.data, ...data } } : n)));
       setSelectedStateNode((prev) => (prev && prev.id === id ? { ...prev, data: { ...prev.data, ...data } } : prev));
     },
@@ -637,7 +673,7 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, onNodesCha
           id: nodeId,
           type: "state",
           position: flowPosition,
-          data: { position_name: expectedName, conditions: expectedConditions, giNogi: expectedGiNogi, description: "" },
+          data: { label: "", position_name: expectedName, conditions: expectedConditions, giNogi: expectedGiNogi, description: "" },
         };
         setNodes((nds) => [...nds, newNode]);
         setEdges((eds) => [...eds, { id: edgeId, source: actionNodeId, target: nodeId, ...edgeStyle } as Edge]);
@@ -658,7 +694,7 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, onNodesCha
       id: nodeId,
       type: "state",
       position: flowPosition,
-      data: { position_name: "New State", conditions: [], giNogi: "", description: "" },
+      data: { label: "", position_name: "New State", conditions: [], giNogi: "", description: "" },
     };
     setNodes((nds) => [...nds, newNode]);
     setEdges((eds) => [...eds, { id: edgeId, source: actionNodeId, target: nodeId, ...edgeStyle } as Edge]);
@@ -707,12 +743,20 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, onNodesCha
         <MiniMap nodeStrokeWidth={3} className="!bg-zinc-100 dark:!bg-zinc-900" />
       </ReactFlow>
 
-      <button
-        onClick={addStateNode}
-        className="absolute left-4 top-4 z-10 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-md transition-colors hover:bg-indigo-500"
-      >
-        + Add State
-      </button>
+      <div className="absolute left-4 top-4 z-10 flex gap-2">
+        <button
+          onClick={addStateNode}
+          className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-md transition-colors hover:bg-indigo-500"
+        >
+          + Add State
+        </button>
+        <button
+          onClick={addFinishNode}
+          className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white shadow-md transition-colors hover:bg-red-500"
+        >
+          + Submitted
+        </button>
+      </div>
 
       {selectedStateNode && (
         <NodeEditor

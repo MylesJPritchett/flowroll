@@ -5,6 +5,7 @@ import type { StateCondition } from "../concepts";
 
 export default function BJJNode({ data }: NodeProps) {
   const d = data as Record<string, unknown>;
+  const label = (d.label as string) ?? "";
   const positionName = (d.position_name as string) ?? "New State";
   const conditions = (d.conditions as StateCondition[]) ?? [];
   const roleA = (d.roleA as string) ?? "A";
@@ -13,6 +14,7 @@ export default function BJJNode({ data }: NodeProps) {
   const roleLabel = (role: "A" | "B") => (role === "A" ? roleA : roleB);
 
   const warnings = (d.warnings as string[]) ?? [];
+  const displayName = label || positionName;
 
   return (
     <div className={`rounded-lg border px-4 py-3 shadow-sm ${
@@ -23,12 +25,15 @@ export default function BJJNode({ data }: NodeProps) {
       <Handle type="target" position={Position.Top} className="!bg-indigo-500" />
       <div className="flex items-center gap-1.5">
         <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
-          {positionName}
+          {displayName}
         </span>
         {warnings.length > 0 && (
           <span className="text-amber-400 text-[10px]" title={warnings.join("\n")}>&#9888;</span>
         )}
       </div>
+      {label && (
+        <div className="text-[10px] text-zinc-400">{positionName}</div>
+      )}
       {conditions.length > 0 && (
         <div className="mt-1.5 flex flex-wrap gap-1">
           {conditions.map((c) => (

@@ -33,7 +33,10 @@ function StateRow({ node, taxonomy, onUpdate, onDelete, onTaxonomyChange }: { no
         onClick={() => setExpanded(!expanded)}
       >
         <span className="text-zinc-500 text-xs select-none">{expanded ? "▼" : "▶"}</span>
-        <span className="font-medium text-sm text-zinc-100 min-w-[160px]">{node.position_name}</span>
+        <span className="font-medium text-sm text-zinc-100 min-w-[160px]">
+          {node.label || node.position_name}
+          {node.label && <span className="text-[10px] text-zinc-500 ml-1">({node.position_name})</span>}
+        </span>
         <div className="flex flex-wrap gap-1 flex-1">
           {node.conditions.map((c) => {
             const roleLabel = c.role === "A" ? roles.roleA : roles.roleB;
@@ -66,6 +69,7 @@ function StateRow({ node, taxonomy, onUpdate, onDelete, onTaxonomyChange }: { no
         <div className="px-4 pb-4 pt-1 bg-zinc-900/50">
           <StateEditor
             data={{
+              label: node.label,
               position_name: node.position_name,
               conditions: node.conditions,
               giNogi: node.giNogi,

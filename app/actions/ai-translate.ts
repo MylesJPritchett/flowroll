@@ -65,8 +65,10 @@ ${actionsList}
 
 4. **States** — include when the text describes specific positional situations with conditions:
    state: Position Name
+   state: Position Name as Display Name
      description: optional contextual notes about this specific state
      role A: Group = value, Group = value
+   - Use "as" to give a named variant (e.g. "state: Mount as High Mount" for mount with specific conditions)
      role B: Group = value, Group = value
      gi/nogi: gi|nogi|both
    - Role A/B map to the position's first/second role
@@ -77,6 +79,7 @@ ${actionsList}
    - Use → between steps
    - Alternates: state, action, state, action...
    - Use position names or brief descriptions for states
+   - End with "Submitted" for submission finishes (e.g. flow: Mount → Armbar → Submitted)
 
 ## Important:
 - Reuse existing position, condition, and action names EXACTLY (case-sensitive) when they match

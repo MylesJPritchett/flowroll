@@ -311,6 +311,7 @@ export async function importNotation(input: string): Promise<ImportResult> {
     const nodeId = `import-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const metadata = {
       type: "state",
+      label: s.label,
       conditions,
       giNogi: s.giNogi,
     };
@@ -358,7 +359,19 @@ export async function importNotation(input: string): Promise<ImportResult> {
       const nodeId = `flow-${graphId}-${idx}-${Math.random().toString(36).slice(2, 8)}`;
       nodeIds.push(nodeId);
 
-      if (step.type === "state") {
+      if (step.type === "finish") {
+        const { error } = await supabase.from("graph_nodes").insert({
+          id: nodeId,
+          user_id: userId,
+          graph_id: graphId,
+          label: step.label,
+          description: "",
+          position_x: idx * xSpacing + 100,
+          position_y: 200,
+          metadata: { type: "finish" },
+        });
+        if (error) warnings.push(`Failed to create flow node "${step.label}": ${error.message}`);
+      } else if (step.type === "state") {
         // Try to match an existing position
         const pos = positionsByName.get(step.label.toLowerCase());
         const { error } = await supabase.from("graph_nodes").insert({

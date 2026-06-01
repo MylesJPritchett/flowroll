@@ -161,15 +161,18 @@ action: Hip Escape
   adds: Legs = knee shield (actor)
   removes: Near Arm = overhook (opponent)
 
-# States (position + conditions snapshot)
+# States (position + conditions snapshot, "as" for display name)
 state: Closed Guard
   description: My A-game starting point
   role A (Bottom): Near Arm = underhook, Legs = butterfly hooks
   role B (Top): Posture = postured up
   gi/nogi: nogi
+state: Mount as High Mount
+  role A (Top): Weight = heavy pressure
 
-# Flows (state → action → state chains)
-flow: Closed Guard → Hip Escape → Open Guard`}</pre>
+# Flows (state → action → state chains, end with Submitted for a finish)
+flow: Closed Guard → Hip Escape → Open Guard
+flow: Mount → Submit → Submitted`}</pre>
             </details>
           </div>
         )}
@@ -208,7 +211,7 @@ flow: Closed Guard → Hip Escape → Open Guard`}</pre>
                   />
                   <PreviewSection
                     title="States"
-                    items={preview.states.map((s) => s.positionName)}
+                    items={preview.states.map((s) => s.label ? `${s.label} (${s.positionName})` : s.positionName)}
                   />
                   {preview.flows.length > 0 && (
                     <PreviewSection

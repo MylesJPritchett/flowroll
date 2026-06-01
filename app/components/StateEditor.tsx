@@ -7,6 +7,7 @@ import type { GiNogi } from "../actions/graph";
 import { addPosition } from "../actions/taxonomy";
 
 export interface StateData {
+  label: string;
   position_name: string;
   conditions: StateCondition[];
   giNogi: GiNogi;
@@ -22,6 +23,7 @@ interface StateEditorProps {
 }
 
 export default function StateEditor({ data, taxonomy, focusTitle, onChange, onTaxonomyChange }: StateEditorProps) {
+  const [label, setLabel] = useState(data.label);
   const [positionName, setPositionName] = useState(data.position_name);
   const [conditions, setConditions] = useState<StateCondition[]>(data.conditions);
   const [giNogi, setGiNogi] = useState<GiNogi>(data.giNogi);
@@ -33,6 +35,7 @@ export default function StateEditor({ data, taxonomy, focusTitle, onChange, onTa
 
   // Sync from parent when data identity changes
   useEffect(() => {
+    setLabel(data.label);
     setPositionName(data.position_name);
     setConditions(data.conditions);
     setGiNogi(data.giNogi);
@@ -49,6 +52,7 @@ export default function StateEditor({ data, taxonomy, focusTitle, onChange, onTa
 
   const emit = (patch: Partial<StateData>) => {
     const next = {
+      label: patch.label ?? label,
       position_name: patch.position_name ?? positionName,
       conditions: patch.conditions ?? conditions,
       giNogi: patch.giNogi ?? giNogi,
@@ -82,6 +86,22 @@ export default function StateEditor({ data, taxonomy, focusTitle, onChange, onTa
 
   return (
     <div className="space-y-3">
+      {/* Label (display name override) */}
+      <div>
+        <label className="mb-1 block text-xs font-medium text-zinc-400">Name</label>
+        <input
+          type="text"
+          value={label}
+          placeholder={positionName}
+          onChange={(e) => {
+            setLabel(e.target.value);
+            emit({ label: e.target.value });
+          }}
+          className="w-full rounded-md border border-zinc-600 bg-zinc-700 px-3 py-1.5 text-sm text-zinc-100 placeholder:text-zinc-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+        />
+        <div className="mt-0.5 text-[10px] text-zinc-600">Display name (e.g. &quot;High Mount&quot;). Leave empty to use position name.</div>
+      </div>
+
       {/* Position */}
       <div>
         <label className="mb-1 block text-xs font-medium text-zinc-400">Position</label>

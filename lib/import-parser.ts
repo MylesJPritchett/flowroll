@@ -13,6 +13,7 @@
  *     adds: Group = value (actor|opponent)
  *     removes: Group = value (actor|opponent)
  *   state: Position Name
+ *   state: Position Name as Display Name
  *     description: optional contextual notes
  *     role A: Group = value, Group = value
  *     role B: Group = value, Group = value
@@ -59,6 +60,7 @@ export interface ParsedStateCondition {
 }
 
 export interface ParsedState {
+  label: string;
   positionName: string;
   roleA: ParsedStateCondition[];
   roleB: ParsedStateCondition[];
@@ -68,7 +70,7 @@ export interface ParsedState {
 
 export interface ParsedFlowStep {
   label: string;
-  type: "state" | "action";
+  type: "state" | "action" | "finish";
 }
 
 export interface ParsedFlow {
@@ -236,8 +238,13 @@ export function parseNotation(input: string): ParseResult {
 
     // State (multi-line block)
     if (line.startsWith("state:")) {
-      const positionName = line.slice("state:".length).trim();
+      const raw = line.slice("state:".length).trim();
+      // Support "Position as Label" syntax
+      const asMatch = raw.match(/^(.+?)\s+as\s+(.+)$/i);
+      const positionName = asMatch ? asMatch[1].trim() : raw;
+      const stateLabel = asMatch ? asMatch[2].trim() : "";
       const state: ParsedState = {
+        label: stateLabel,
         positionName,
         roleA: [],
         roleB: [],
@@ -277,11 +284,18 @@ export function parseNotation(input: string): ParseResult {
       // Split by → or ->
       const steps = rest.split(/\s*(?:→|->)\s*/).map((s) => s.trim()).filter(Boolean);
       if (steps.length >= 2) {
+        const finishLabels = new Set(["submitted", "submission", "finish", "tap"]);
         // Alternating: state, action, state, action, state...
-        const flowSteps: ParsedFlowStep[] = steps.map((label, idx) => ({
-          label,
-          type: idx % 2 === 0 ? "state" as const : "action" as const,
-        }));
+        // Final step can be a finish node if it matches a finish label
+        const flowSteps: ParsedFlowStep[] = steps.map((label, idx) => {
+          if (finishLabels.has(label.toLowerCase())) {
+            return { label, type: "finish" as const };
+          }
+          return {
+            label,
+            type: idx % 2 === 0 ? "state" as const : "action" as const,
+          };
+        });
         result.flows.push({ steps: flowSteps });
       }
       i++;

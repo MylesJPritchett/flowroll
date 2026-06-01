@@ -56,6 +56,7 @@ export default function Workspace() {
     const newNode: GraphStateNode = {
       id,
       type: "state",
+      label: "",
       position_name: "New State",
       conditions: [],
       giNogi: "",
