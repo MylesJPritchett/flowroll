@@ -120,6 +120,40 @@ export default function Workspace() {
     setFlowGraphs((prev) => prev.filter((f) => f.id !== id));
   }, []);
 
+  const handleInsertFlow = useCallback((flowNodes: GraphNode[], flowEdges: GraphEdge[]) => {
+    // Remap IDs so they don't collide with existing main graph nodes
+    const idMap = new Map<string, string>();
+    const now = Date.now();
+    flowNodes.forEach((n, i) => {
+      idMap.set(n.id, `${now}-${i}`);
+    });
+
+    // Offset the flow nodes so they don't land on top of existing nodes
+    // Find the rightmost x in the main graph to place the flow to the right
+    const maxX = nodes.reduce((max, n) => Math.max(max, n.type === "state" ? n.position_x : n.type === "action" ? n.position_x : n.type === "finish" ? n.position_x : 0), 0);
+    const offsetX = maxX + 300;
+
+    const newNodes: GraphNode[] = flowNodes.map((n) => {
+      const newId = idMap.get(n.id)!;
+      if (n.type === "action") {
+        return { ...n, id: newId, position_x: n.position_x + offsetX };
+      }
+      if (n.type === "finish") {
+        return { ...n, id: newId, position_x: n.position_x + offsetX };
+      }
+      return { ...n, id: newId, position_x: n.position_x + offsetX };
+    });
+
+    const newEdges: GraphEdge[] = flowEdges.map((e, i) => ({
+      id: `${now}-e${i}`,
+      source_node_id: idMap.get(e.source_node_id) ?? e.source_node_id,
+      target_node_id: idMap.get(e.target_node_id) ?? e.target_node_id,
+    }));
+
+    setNodes((prev) => [...prev, ...newNodes]);
+    setEdges((prev) => [...prev, ...newEdges]);
+  }, [nodes]);
+
   const handleFlowChange = useCallback((flowId: string, newNodes: GraphNode[], newEdges: GraphEdge[]) => {
     setFlowGraphs((prev) => prev.map((f) =>
       f.id === flowId ? { ...f, nodes: newNodes, edges: newEdges } : f,
@@ -216,6 +250,7 @@ export default function Workspace() {
             onEdgesChange={setEdges}
             onFlowChange={handleFlowChange}
             onFlowSave={scheduleFlowSave}
+            onInsertFlow={handleInsertFlow}
             onTaxonomyChange={refreshTaxonomy}
             onDeleteFlow={handleDeleteFlow}
           />

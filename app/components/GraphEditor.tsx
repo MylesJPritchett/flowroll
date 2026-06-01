@@ -338,11 +338,12 @@ interface GraphEditorProps {
   onEdgesChange: (edges: GraphEdge[]) => void;
   onFlowChange?: (flowId: string, nodes: GraphNode[], edges: GraphEdge[]) => void;
   onFlowSave?: (flowId: string, nodes: GraphNode[], edges: GraphEdge[]) => void;
+  onInsertFlow?: (nodes: GraphNode[], edges: GraphEdge[]) => void;
   onTaxonomyChange?: () => void;
   onDeleteFlow?: (id: string) => void;
 }
 
-function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, flowGraphs, onNodesChange: emitNodes, onEdgesChange: emitEdges, onFlowChange, onFlowSave, onTaxonomyChange, onDeleteFlow }: GraphEditorProps) {
+function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, flowGraphs, onNodesChange: emitNodes, onEdgesChange: emitEdges, onFlowChange, onFlowSave, onInsertFlow, onTaxonomyChange, onDeleteFlow }: GraphEditorProps) {
   const { screenToFlowPosition, fitView } = useReactFlow();
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -801,6 +802,17 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, flowGraphs
         >
           + Submitted
         </button>
+        {isViewingFlow && activeFlow && onInsertFlow && (
+          <button
+            onClick={() => {
+              onInsertFlow(activeFlow.nodes, activeFlow.edges);
+              setActiveFlowId(null);
+            }}
+            className="rounded-lg bg-green-600 px-3 py-2 text-sm font-medium text-white shadow-md transition-colors hover:bg-green-500"
+          >
+            Insert into My Graph
+          </button>
+        )}
         {isViewingFlow && onDeleteFlow && (
           <button
             onClick={() => {
