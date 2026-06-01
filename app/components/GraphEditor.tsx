@@ -35,6 +35,7 @@ const nodeTypes: NodeTypes = {
 const edgeStyle: Partial<Edge> = {
   animated: true,
   style: { stroke: "#52525b", strokeWidth: 1.5 },
+  interactionWidth: 20,
 };
 
 // --- Condition matching helpers ---
@@ -535,6 +536,20 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, onNodesCha
     setEditorPos(getRelativePos(e));
   }, [getRelativePos]);
 
+  const [selectedEdge, setSelectedEdge] = useState<{ id: string; pos: { x: number; y: number } } | null>(null);
+
+  const onEdgeClick = useCallback((e: React.MouseEvent, edge: Edge) => {
+    setSelectedEdge({ id: edge.id, pos: clampEditorPos(e.clientX, e.clientY) });
+    setSelectedStateNode(null);
+    setSelectedActionNode(null);
+    setPendingSuggestion(null);
+  }, [clampEditorPos]);
+
+  const deleteEdge = useCallback((id: string) => {
+    setEdges((eds) => eds.filter((e) => e.id !== id));
+    setSelectedEdge(null);
+  }, [setEdges]);
+
   const onPaneClick = useCallback(() => {
     if (justCreatedNode.current) {
       justCreatedNode.current = false;
@@ -543,6 +558,7 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, onNodesCha
     setSelectedStateNode(null);
     setSelectedActionNode(null);
     setPendingSuggestion(null);
+    setSelectedEdge(null);
   }, []);
 
   const updateStateNode = useCallback(
@@ -679,8 +695,10 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, onNodesCha
         onConnectEnd={onConnectEnd}
         onNodeClick={onNodeClick}
         onNodeDoubleClick={onNodeDoubleClick}
+        onEdgeClick={onEdgeClick}
         onPaneClick={onPaneClick}
         nodeTypes={nodeTypes}
+        defaultEdgeOptions={{ selectable: true }}
         fitView
         proOptions={{ hideAttribution: true }}
       >
@@ -707,6 +725,24 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, onNodesCha
           onClose={() => { setSelectedStateNode(null); setFocusTitle(false); }}
           onTaxonomyChange={onTaxonomyChange}
         />
+      )}
+
+      {selectedEdge && (
+        <div
+          style={{ left: selectedEdge.pos.x, top: selectedEdge.pos.y }}
+          className="absolute z-10 rounded-lg border border-zinc-700 bg-zinc-800 p-3 shadow-lg"
+        >
+          <div className="mb-2 flex items-center justify-between gap-4">
+            <span className="text-xs font-medium text-zinc-300">Connection</span>
+            <button onClick={() => setSelectedEdge(null)} className="text-zinc-400 hover:text-zinc-200">&times;</button>
+          </div>
+          <button
+            onClick={() => deleteEdge(selectedEdge.id)}
+            className="w-full rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-red-500"
+          >
+            Delete Connection
+          </button>
+        </div>
       )}
 
       {pendingSuggestion && (
