@@ -20,14 +20,16 @@ export default function ActionNode({ data }: NodeProps) {
             : "border-amber-400 bg-amber-950 text-amber-200"
       }`}
     >
-      <Handle type="target" position={Position.Top} className={isA ? "!bg-blue-400" : "!bg-amber-400"} />
+      <Handle type="target" position={Position.Left} id="target"
+        className={isA ? "!bg-blue-400" : "!bg-amber-400"} />
       <span className="text-xs font-semibold whitespace-nowrap flex items-center gap-1">
         {actionName}
         {warnings.length > 0 && (
           <span className="text-red-300 text-[10px]" title={warnings.join("\n")}>&#9888;</span>
         )}
       </span>
-      <Handle type="source" position={Position.Bottom} className={isA ? "!bg-blue-400" : "!bg-amber-400"} />
+      <Handle type="source" position={Position.Right} id="source"
+        className={isA ? "!bg-blue-400" : "!bg-amber-400"} />
     </div>
   );
 }

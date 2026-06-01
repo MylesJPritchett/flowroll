@@ -33,11 +33,21 @@ const nodeTypes: NodeTypes = {
   finish: FinishNode,
 };
 
-const edgeStyle: Partial<Edge> = {
-  animated: true,
-  style: { stroke: "#52525b", strokeWidth: 1.5 },
-  interactionWidth: 20,
-};
+// --- Edge styling ---
+
+const EDGE_COLOR_A = "#60a5fa"; // blue-400
+const EDGE_COLOR_B = "#fbbf24"; // amber-400
+const EDGE_COLOR_DEFAULT = "#52525b"; // zinc-600
+
+function makeEdgeStyle(actor?: "A" | "B"): Partial<Edge> {
+  const stroke = actor === "A" ? EDGE_COLOR_A : actor === "B" ? EDGE_COLOR_B : EDGE_COLOR_DEFAULT;
+  return { animated: true, style: { stroke, strokeWidth: 1.5 }, interactionWidth: 20 };
+}
+
+/** Derive actor from a source handle id */
+function actorForHandle(handleId: string | null | undefined): "A" | "B" {
+  return handleId === "source-b" ? "B" : "A";
+}
 
 // --- Condition matching helpers ---
 
@@ -271,7 +281,10 @@ function toRFEdges(dbEdges: GraphEdge[]): Edge[] {
     id: e.id,
     source: e.source_node_id,
     target: e.target_node_id,
-    ...edgeStyle,
+    ...(e.source_handle ? { sourceHandle: e.source_handle } : {}),
+    ...(e.target_handle ? { targetHandle: e.target_handle } : {}),
+    data: { actor: e.actor },
+    ...makeEdgeStyle(e.actor),
   }));
 }
 
@@ -314,11 +327,31 @@ function fromRFNodes(nodes: Node[]): GraphNode[] {
 }
 
 function fromRFEdges(edges: Edge[]): GraphEdge[] {
-  return edges.map((e) => ({
-    id: e.id,
-    source_node_id: e.source,
-    target_node_id: e.target,
-  }));
+  return edges.map((e) => {
+    const d = e.data as Record<string, unknown> | undefined;
+    return {
+      id: e.id,
+      source_node_id: e.source,
+      target_node_id: e.target,
+      ...(e.sourceHandle ? { source_handle: e.sourceHandle } : {}),
+      ...(e.targetHandle ? { target_handle: e.targetHandle } : {}),
+      ...(d?.actor ? { actor: d.actor as "A" | "B" } : {}),
+    };
+  });
+}
+
+// --- Helper to build an edge object with actor, handles, and color ---
+
+function buildEdge(id: string, source: string, target: string, actor: "A" | "B", sourceHandle?: string, targetHandle?: string): Edge {
+  return {
+    id,
+    source,
+    target,
+    ...(sourceHandle ? { sourceHandle } : {}),
+    ...(targetHandle ? { targetHandle } : {}),
+    data: { actor },
+    ...makeEdgeStyle(actor),
+  } as Edge;
 }
 
 // --- Props ---
@@ -412,22 +445,55 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, flowGraphs
 
   const onConnect: OnConnect = useCallback(
     (params) => {
-      setEdges((eds) => addEdge({ ...params, ...edgeStyle }, eds));
-      // Apply action effects if action → state connection
-      if (params.source) {
-        const sourceNode = nodes.find((n) => n.id === params.source);
-        const targetNode = params.target ? nodes.find((n) => n.id === params.target) : undefined;
+      const sourceNode = params.source ? nodes.find((n) => n.id === params.source) : undefined;
+      const targetNode = params.target ? nodes.find((n) => n.id === params.target) : undefined;
+
+      if (sourceNode?.type === "state" && targetNode?.type === "state") {
+        // State → State: create an intermediate action node
+        // Actor from source handle, target handle from where the user actually dropped
+        const actor = actorForHandle(params.sourceHandle);
+        const targetHandle = params.targetHandle ?? (actor === "A" ? "target-a-left" : "target-b-left");
+        const actionId = `${Date.now()}`;
+        const srcPos = sourceNode.position;
+        const tgtPos = targetNode.position;
+        const midPosition = { x: (srcPos.x + tgtPos.x) / 2, y: (srcPos.y + tgtPos.y) / 2 };
+
+        const newAction: Node = {
+          id: actionId,
+          type: "action",
+          position: midPosition,
+          data: { action_id: "", action_name: "", actor },
+        };
+        setNodes((nds) => [...nds, newAction]);
+        setEdges((eds) => [
+          ...eds,
+          buildEdge(`e${actionId}-in`, params.source!, actionId, actor, params.sourceHandle ?? `source-${actor.toLowerCase()}`, "target"),
+          buildEdge(`e${actionId}-out`, actionId, params.target!, actor, "source", targetHandle),
+        ]);
+
+        justCreatedNode.current = true;
+        setSelectedActionNode(newAction);
+        setSelectedStateNode(null);
+        const rect = containerRef.current?.getBoundingClientRect();
+        if (rect) setEditorPos({ x: rect.width / 2 - 160, y: Math.max(12, rect.height / 2 - 100) });
+      } else {
+        // Action → State or other direct connections
+        const edgeActor = sourceNode?.type === "action"
+          ? ((sourceNode.data as Record<string, unknown>)?.actor as "A" | "B") ?? "A"
+          : actorForHandle(params.sourceHandle);
+        setEdges((eds) => addEdge({ ...params, data: { actor: edgeActor }, ...makeEdgeStyle(edgeActor) }, eds));
         if (sourceNode?.type === "action" && targetNode?.type === "state") {
-          applyActionEffects(params.source, params.target!);
+          applyActionEffects(params.source!, params.target!);
         }
       }
     },
-    [setEdges, nodes, applyActionEffects],
+    [setEdges, setNodes, nodes, applyActionEffects],
   );
 
   // Pending suggestion state: when dragging from action → empty space
   interface PendingSuggestion {
     actionNodeId: string;
+    actor: "A" | "B";
     flowPosition: { x: number; y: number };
     expectedName: string;
     expectedConditions: StateCondition[];
@@ -459,9 +525,10 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, flowGraphs
   const justCreatedNode = useRef(false);
 
   // When dragging from a state to empty space → create action node
-  // When dragging from an action to empty space → create state node
+  // When dragging from an action to empty space → suggest/create state
   const onConnectEnd = useCallback(
-    (event: MouseEvent | TouchEvent, connectionState: { isValid: boolean | null; fromNode: { id: string } | null }) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (event: MouseEvent | TouchEvent, connectionState: any) => {
       if (connectionState.isValid) return;
       if (!connectionState.fromNode) return;
       const clientX = "changedTouches" in event ? event.changedTouches[0].clientX : event.clientX;
@@ -470,9 +537,9 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, flowGraphs
       const sourceId = connectionState.fromNode.id;
       const sourceNode = nodes.find((n) => n.id === sourceId);
       const sourceType = sourceNode?.type;
+      const fromHandleId: string | null = connectionState.fromHandle?.id ?? null;
 
       const nodeId = `${Date.now()}`;
-      const edgeId = `e${nodeId}`;
 
       if (sourceType === "action") {
         // From action → compute expected state, show suggestions
@@ -494,6 +561,7 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, flowGraphs
         justCreatedNode.current = true;
         setPendingSuggestion({
           actionNodeId: sourceId,
+          actor,
           flowPosition: position,
           expectedName,
           expectedConditions,
@@ -502,16 +570,20 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, flowGraphs
         setSelectedStateNode(null);
         setSelectedActionNode(null);
         setEditorPos(clampEditorPos(clientX, clientY));
-      } else {
-        // From state → create action
+      } else if (sourceType === "state") {
+        // From state → create action, actor from handle
+        const actor = actorForHandle(fromHandleId);
         const newNode: Node = {
           id: nodeId,
           type: "action",
           position,
-          data: { action_id: "", action_name: "", actor: "A" },
+          data: { action_id: "", action_name: "", actor },
         };
         setNodes((nds) => [...nds, newNode]);
-        setEdges((eds) => [...eds, { id: edgeId, source: sourceId, target: nodeId, ...edgeStyle } as Edge]);
+        setEdges((eds) => [...eds, buildEdge(
+          `e${nodeId}`, sourceId, nodeId, actor,
+          fromHandleId ?? `source-${actor.toLowerCase()}`, "target",
+        )]);
         justCreatedNode.current = true;
         setSelectedActionNode(newNode);
         setSelectedStateNode(null);
@@ -651,14 +723,13 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, flowGraphs
   const handleSuggestionSelect = useCallback(
     (existingNodeId: string | null) => {
       if (!pendingSuggestion) return;
-      const { actionNodeId, flowPosition, expectedName, expectedConditions, expectedGiNogi } = pendingSuggestion;
+      const { actionNodeId, actor, flowPosition, expectedName, expectedConditions, expectedGiNogi } = pendingSuggestion;
+      const targetHandle = actor === "A" ? "target-a-left" : "target-b-left";
 
       if (existingNodeId) {
-        // Connect to existing state
         const edgeId = `e${Date.now()}`;
-        setEdges((eds) => [...eds, { id: edgeId, source: actionNodeId, target: existingNodeId, ...edgeStyle } as Edge]);
+        setEdges((eds) => [...eds, buildEdge(edgeId, actionNodeId, existingNodeId, actor, "source", targetHandle)]);
       } else {
-        // Create new state
         const nodeId = `${Date.now()}`;
         const edgeId = `e${nodeId}`;
         const newNode: Node = {
@@ -668,7 +739,7 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, flowGraphs
           data: { state_id: "", label: "", position_name: expectedName, conditions: expectedConditions, giNogi: expectedGiNogi, description: "" },
         };
         setNodes((nds) => [...nds, newNode]);
-        setEdges((eds) => [...eds, { id: edgeId, source: actionNodeId, target: nodeId, ...edgeStyle } as Edge]);
+        setEdges((eds) => [...eds, buildEdge(edgeId, actionNodeId, nodeId, actor, "source", targetHandle)]);
         setSelectedStateNode(newNode);
         setFocusTitle(true);
       }
@@ -679,7 +750,8 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, flowGraphs
 
   const handleCreateNewState = useCallback(() => {
     if (!pendingSuggestion) return;
-    const { actionNodeId, flowPosition } = pendingSuggestion;
+    const { actionNodeId, actor, flowPosition } = pendingSuggestion;
+    const targetHandle = actor === "A" ? "target-a-left" : "target-b-left";
     const nodeId = `${Date.now()}`;
     const edgeId = `e${nodeId}`;
     const newNode: Node = {
@@ -689,7 +761,7 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, flowGraphs
       data: { state_id: "", label: "", position_name: "New State", conditions: [], giNogi: "", description: "" },
     };
     setNodes((nds) => [...nds, newNode]);
-    setEdges((eds) => [...eds, { id: edgeId, source: actionNodeId, target: nodeId, ...edgeStyle } as Edge]);
+    setEdges((eds) => [...eds, buildEdge(edgeId, actionNodeId, nodeId, actor, "source", targetHandle)]);
     setSelectedStateNode(newNode);
     setFocusTitle(true);
     setPendingSuggestion(null);

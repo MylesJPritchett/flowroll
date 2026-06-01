@@ -44,6 +44,24 @@ body {
   font-size: 11px;
 }
 
+/* Source handles: visible at rest (have connectionindicator), hidden during drag (lose it).
+   Target handles: hidden at rest (no connectionindicator), visible during drag (gain it).
+   This works because:
+   - Sources have isConnectableEnd=false → connectionindicator at rest, not during drag
+   - Targets have isConnectableStart=false → no connectionindicator at rest, yes during drag */
+.react-flow__node-state .react-flow__handle.source-handle,
+.react-flow__node-state .react-flow__handle.target-handle {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+.react-flow__node-state .react-flow__handle.source-handle.connectionindicator,
+.react-flow__node-state .react-flow__handle.target-handle.connectionindicator {
+  opacity: 1;
+  pointer-events: auto;
+}
+
 .react-flow__edge {
   cursor: pointer;
 }

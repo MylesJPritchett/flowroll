@@ -8,7 +8,7 @@ export default function FinishNode({ data }: NodeProps) {
 
   return (
     <div className="rounded-lg border-2 border-red-500 bg-red-950 px-4 py-2.5 shadow-sm">
-      <Handle type="target" position={Position.Top} className="!bg-red-400" />
+      <Handle type="target" position={Position.Left} id="target" className="!bg-red-400" />
       <span className="text-xs font-bold text-red-200 whitespace-nowrap">{label}</span>
     </div>
   );

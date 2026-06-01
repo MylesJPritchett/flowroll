@@ -43,6 +43,9 @@ export interface GraphEdge {
   id: string;
   source_node_id: string;
   target_node_id: string;
+  source_handle?: string;
+  target_handle?: string;
+  actor?: "A" | "B";
 }
 
 // --- Graph (container) type ---
@@ -82,7 +85,11 @@ export function serializeEdge(e: GraphEdge, userId: string, graphId: string | nu
     source_node_id: e.source_node_id,
     target_node_id: e.target_node_id,
     relationship: "",
-    metadata: {},
+    metadata: {
+      ...(e.source_handle ? { source_handle: e.source_handle } : {}),
+      ...(e.target_handle ? { target_handle: e.target_handle } : {}),
+      ...(e.actor ? { actor: e.actor } : {}),
+    },
   };
 }
 
@@ -127,9 +134,15 @@ export function deserializeNodes(rows: Record<string, unknown>[]): GraphNode[] {
 }
 
 export function deserializeEdges(rows: Record<string, unknown>[]): GraphEdge[] {
-  return rows.map((row) => ({
-    id: row.id as string,
-    source_node_id: row.source_node_id as string,
-    target_node_id: row.target_node_id as string,
-  }));
+  return rows.map((row) => {
+    const meta = (row.metadata as Record<string, unknown>) ?? {};
+    return {
+      id: row.id as string,
+      source_node_id: row.source_node_id as string,
+      target_node_id: row.target_node_id as string,
+      ...(meta.source_handle ? { source_handle: meta.source_handle as string } : {}),
+      ...(meta.target_handle ? { target_handle: meta.target_handle as string } : {}),
+      ...(meta.actor ? { actor: meta.actor as "A" | "B" } : {}),
+    };
+  });
 }
