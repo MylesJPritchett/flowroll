@@ -92,7 +92,7 @@ export async function loadGraph(): Promise<{
   return { nodes: deserializeNodes(nodesResult.data), edges: deserializeEdges(edgesResult.data) };
 }
 
-function deserializeNodes(rows: Record<string, unknown>[]): GraphNode[] {
+export function deserializeNodes(rows: Record<string, unknown>[]): GraphNode[] {
   return rows.map((row) => {
     const meta = (row.metadata as Record<string, unknown>) ?? {};
     if (meta.type === "action") {
@@ -130,7 +130,7 @@ function deserializeNodes(rows: Record<string, unknown>[]): GraphNode[] {
   });
 }
 
-function deserializeEdges(rows: Record<string, unknown>[]): GraphEdge[] {
+export function deserializeEdges(rows: Record<string, unknown>[]): GraphEdge[] {
   return rows.map((row) => ({
     id: row.id as string,
     source_node_id: row.source_node_id as string,
