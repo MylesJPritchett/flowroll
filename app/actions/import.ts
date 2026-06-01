@@ -335,8 +335,59 @@ export async function importNotation(input: string): Promise<ImportResult> {
   }
 
   // --- 5. Create flow graphs ---
+  // Build a set of known state display names from parsed state definitions
+  const stateLabels = new Set<string>();
+  for (const s of parsed.states) {
+    stateLabels.add(s.positionName.toLowerCase());
+    if (s.label) stateLabels.add(s.label.toLowerCase());
+  }
+
+  // Helper: resolve step type using taxonomy + state definitions
+  function resolveStepType(label: string, explicitType: string): "state" | "action" | "finish" {
+    if (explicitType === "finish") return "finish";
+    if (explicitType === "state") return "state";
+    if (explicitType === "action") return "action";
+    // Check taxonomy: positions = states, actions = actions
+    if (positionsByName.has(label.toLowerCase())) return "state";
+    if (stateLabels.has(label.toLowerCase())) return "state";
+    if (actionsByName.has(label.toLowerCase())) return "action";
+    // Fallback: unknown — guess based on name patterns
+    // Words like "get", "escape", "sweep", "pass", "submit", "insert", "establish"
+    // suggest actions; otherwise default to state
+    const actionPatterns = /^(get|escape|sweep|pass|submit|take|insert|establish|pull|push|hip|bridge|frame|strip|pummel|reguard|mount|kimura|armbar|triangle|choke|lock|crank|slam|throw|shoot|sprawl)\b/i;
+    if (actionPatterns.test(label)) return "action";
+    return "state";
+  }
+
   for (const flow of parsed.flows) {
-    const flowName = flow.steps.map((s) => s.label).join(" → ");
+    // Resolve types for all steps
+    const resolvedSteps = flow.steps.map((s) => ({
+      label: s.label,
+      type: resolveStepType(s.label, s.type),
+    }));
+
+    // Insert implicit states between consecutive actions.
+    // A valid flow alternates state → action → state. When two actions
+    // are adjacent, we insert a placeholder state between them.
+    // When two states are adjacent, we insert a placeholder action.
+    const normalizedSteps: { label: string; type: "state" | "action" | "finish" }[] = [];
+    for (let idx = 0; idx < resolvedSteps.length; idx++) {
+      const step = resolvedSteps[idx];
+      if (idx > 0 && normalizedSteps.length > 0) {
+        const prev = normalizedSteps[normalizedSteps.length - 1];
+        // Two consecutive actions — insert a placeholder state between them
+        if (prev.type === "action" && step.type === "action") {
+          normalizedSteps.push({ label: "?", type: "state" });
+        }
+        // Two consecutive states — insert a placeholder action between them
+        if (prev.type === "state" && step.type === "state") {
+          normalizedSteps.push({ label: "?", type: "action" });
+        }
+      }
+      normalizedSteps.push(step);
+    }
+
+    const flowName = normalizedSteps.map((s) => s.label).join(" → ");
 
     // Create a graph container
     const { data: graph, error: graphError } = await supabase
@@ -354,8 +405,8 @@ export async function importNotation(input: string): Promise<ImportResult> {
     const nodeIds: string[] = [];
     const xSpacing = 250;
 
-    for (let idx = 0; idx < flow.steps.length; idx++) {
-      const step = flow.steps[idx];
+    for (let idx = 0; idx < normalizedSteps.length; idx++) {
+      const step = normalizedSteps[idx];
       const nodeId = `flow-${graphId}-${idx}-${Math.random().toString(36).slice(2, 8)}`;
       nodeIds.push(nodeId);
 
@@ -372,21 +423,42 @@ export async function importNotation(input: string): Promise<ImportResult> {
         });
         if (error) warnings.push(`Failed to create flow node "${step.label}": ${error.message}`);
       } else if (step.type === "state") {
-        // Try to match an existing position
-        const pos = positionsByName.get(step.label.toLowerCase());
+        // Try to match a parsed state definition (by label or position name)
+        const matchedState = parsed.states.find(
+          (s) => (s.label && s.label.toLowerCase() === step.label.toLowerCase())
+            || s.positionName.toLowerCase() === step.label.toLowerCase(),
+        );
+        const pos = positionsByName.get(
+          (matchedState?.positionName ?? step.label).toLowerCase(),
+        );
+        const posName = pos?.name ?? matchedState?.positionName ?? step.label;
+        const stateLabel = matchedState?.label ?? (pos && pos.name !== step.label ? step.label : "");
+
+        // Resolve conditions from matched state definition if available
+        const flowConditions: { groupId: string; value: string; role: "A" | "B" }[] = [];
+        if (matchedState) {
+          for (const c of matchedState.roleA) {
+            const group = groupsByName.get(c.group.toLowerCase());
+            if (group) flowConditions.push({ groupId: group.id, value: c.value, role: "A" });
+          }
+          for (const c of matchedState.roleB) {
+            const group = groupsByName.get(c.group.toLowerCase());
+            if (group) flowConditions.push({ groupId: group.id, value: c.value, role: "B" });
+          }
+        }
+
         const { error } = await supabase.from("graph_nodes").insert({
           id: nodeId,
           user_id: userId,
           graph_id: graphId,
-          label: pos?.name ?? step.label,
-          description: "",
+          label: posName,
+          description: matchedState?.description ?? "",
           position_x: idx * xSpacing + 100,
           position_y: 200,
-          metadata: { type: "state", conditions: [], giNogi: "" },
+          metadata: { type: "state", label: stateLabel, conditions: flowConditions, giNogi: matchedState?.giNogi ?? "" },
         });
         if (error) warnings.push(`Failed to create flow node "${step.label}": ${error.message}`);
       } else {
-        // Action step
         const action = actionsByName.get(step.label.toLowerCase());
         const { error } = await supabase.from("graph_nodes").insert({
           id: nodeId,

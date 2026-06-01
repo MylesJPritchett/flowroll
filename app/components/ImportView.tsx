@@ -170,9 +170,10 @@ state: Closed Guard
 state: Mount as High Mount
   role A (Top): Weight = heavy pressure
 
-# Flows (state → action → state chains, end with Submitted for a finish)
+# Flows (state → action → state, use named states for sub-positions)
 flow: Closed Guard → Hip Escape → Open Guard
-flow: Mount → Submit → Submitted`}</pre>
+flow: Turtle → Establish Seatbelt → Back Mount (Seatbelt) → Insert Hooks → Back Mount (Hooks In)
+flow: Mount → Armbar → Submitted`}</pre>
             </details>
           </div>
         )}

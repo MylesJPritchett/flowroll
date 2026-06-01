@@ -70,7 +70,7 @@ export interface ParsedState {
 
 export interface ParsedFlowStep {
   label: string;
-  type: "state" | "action" | "finish";
+  type: "state" | "action" | "finish" | "unknown";
 }
 
 export interface ParsedFlow {
@@ -285,16 +285,13 @@ export function parseNotation(input: string): ParseResult {
       const steps = rest.split(/\s*(?:→|->)\s*/).map((s) => s.trim()).filter(Boolean);
       if (steps.length >= 2) {
         const finishLabels = new Set(["submitted", "submission", "finish", "tap"]);
-        // Alternating: state, action, state, action, state...
-        // Final step can be a finish node if it matches a finish label
-        const flowSteps: ParsedFlowStep[] = steps.map((label, idx) => {
+        // Parse steps as unknown — type resolution happens at import time
+        // using taxonomy to distinguish positions from actions.
+        const flowSteps: ParsedFlowStep[] = steps.map((label) => {
           if (finishLabels.has(label.toLowerCase())) {
             return { label, type: "finish" as const };
           }
-          return {
-            label,
-            type: idx % 2 === 0 ? "state" as const : "action" as const,
-          };
+          return { label, type: "unknown" as const };
         });
         result.flows.push({ steps: flowSteps });
       }

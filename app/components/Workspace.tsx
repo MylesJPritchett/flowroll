@@ -1,9 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { loadGraph, saveGraph, type GraphNode, type GraphEdge, type GraphStateNode, type GraphActionNode } from "../actions/graph";
+import { loadGraph, saveGraph, saveFlowGraph, loadGraphs, loadGraphById, deleteGraph, type GraphNode, type GraphEdge, type GraphStateNode, type GraphActionNode, type Graph } from "../actions/graph";
 import { loadTaxonomy } from "../actions/taxonomy";
-import GraphEditor from "./GraphEditor";
+import GraphEditor, { type FlowGraph } from "./GraphEditor";
 import ImportView from "./ImportView";
 import ListView from "./StateListView";
 
@@ -16,11 +16,24 @@ export default function Workspace() {
   const [nodes, setNodes] = useState<GraphNode[]>([]);
   const [edges, setEdges] = useState<GraphEdge[]>([]);
   const [taxonomy, setTaxonomy] = useState<Taxonomy | null>(null);
+  const [flowGraphs, setFlowGraphs] = useState<FlowGraph[]>([]);
   const [view, setView] = useState<View>("list");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const initialized = useRef(false);
+
+  const loadFlowGraphs = useCallback(async () => {
+    const graphs = await loadGraphs();
+    const loaded: FlowGraph[] = [];
+    for (const g of graphs) {
+      const data = await loadGraphById(g.id);
+      if (data) {
+        loaded.push({ id: g.id, name: data.graph.name, nodes: data.nodes, edges: data.edges });
+      }
+    }
+    setFlowGraphs(loaded);
+  }, []);
 
   useEffect(() => {
     Promise.all([loadGraph(), loadTaxonomy()]).then(([graphData, taxData]) => {
@@ -34,7 +47,8 @@ export default function Workspace() {
       setLoading(false);
       setTimeout(() => { initialized.current = true; }, 100);
     });
-  }, []);
+    loadFlowGraphs();
+  }, [loadFlowGraphs]);
 
   const scheduleSave = useCallback((currentNodes: GraphNode[], currentEdges: GraphEdge[]) => {
     if (!initialized.current) return;
@@ -101,6 +115,34 @@ export default function Workspace() {
     });
   }, []);
 
+  const handleDeleteFlow = useCallback(async (id: string) => {
+    await deleteGraph(id);
+    setFlowGraphs((prev) => prev.filter((f) => f.id !== id));
+  }, []);
+
+  const handleFlowChange = useCallback((flowId: string, newNodes: GraphNode[], newEdges: GraphEdge[]) => {
+    setFlowGraphs((prev) => prev.map((f) =>
+      f.id === flowId ? { ...f, nodes: newNodes, edges: newEdges } : f,
+    ));
+  }, []);
+
+  // Auto-save flow graphs
+  const flowSaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flowSaveRef = useRef<{ id: string; nodes: GraphNode[]; edges: GraphEdge[] } | null>(null);
+
+  const scheduleFlowSave = useCallback((flowId: string, flowNodes: GraphNode[], flowEdges: GraphEdge[]) => {
+    flowSaveRef.current = { id: flowId, nodes: flowNodes, edges: flowEdges };
+    if (flowSaveTimeout.current) clearTimeout(flowSaveTimeout.current);
+    flowSaveTimeout.current = setTimeout(async () => {
+      const pending = flowSaveRef.current;
+      if (pending) {
+        setSaving(true);
+        await saveFlowGraph(pending.id, pending.nodes, pending.edges);
+        setSaving(false);
+      }
+    }, 1500);
+  }, []);
+
   if (loading || !taxonomy) {
     return (
       <div className="absolute inset-0 flex items-center justify-center">
@@ -148,6 +190,7 @@ export default function Workspace() {
                   setEdges(graphData.edges);
                 }
               });
+              loadFlowGraphs();
             }}
           />
         ) : view === "list" ? (
@@ -168,9 +211,13 @@ export default function Workspace() {
             nodes={nodes}
             edges={edges}
             taxonomy={taxonomy}
+            flowGraphs={flowGraphs}
             onNodesChange={setNodes}
             onEdgesChange={setEdges}
+            onFlowChange={handleFlowChange}
+            onFlowSave={scheduleFlowSave}
             onTaxonomyChange={refreshTaxonomy}
+            onDeleteFlow={handleDeleteFlow}
           />
         )}
       </div>

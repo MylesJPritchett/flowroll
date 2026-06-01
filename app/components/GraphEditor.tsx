@@ -322,30 +322,52 @@ function fromRFEdges(edges: Edge[]): GraphEdge[] {
 
 // --- Props ---
 
+export interface FlowGraph {
+  id: string;
+  name: string;
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+}
+
 interface GraphEditorProps {
   nodes: GraphNode[];
   edges: GraphEdge[];
   taxonomy: Taxonomy;
+  flowGraphs: FlowGraph[];
   onNodesChange: (nodes: GraphNode[]) => void;
   onEdgesChange: (edges: GraphEdge[]) => void;
+  onFlowChange?: (flowId: string, nodes: GraphNode[], edges: GraphEdge[]) => void;
+  onFlowSave?: (flowId: string, nodes: GraphNode[], edges: GraphEdge[]) => void;
   onTaxonomyChange?: () => void;
+  onDeleteFlow?: (id: string) => void;
 }
 
-function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, onNodesChange: emitNodes, onEdgesChange: emitEdges, onTaxonomyChange }: GraphEditorProps) {
-  const { screenToFlowPosition } = useReactFlow();
+function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, flowGraphs, onNodesChange: emitNodes, onEdgesChange: emitEdges, onFlowChange, onFlowSave, onTaxonomyChange, onDeleteFlow }: GraphEditorProps) {
+  const { screenToFlowPosition, fitView } = useReactFlow();
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedStateNode, setSelectedStateNode] = useState<Node | null>(null);
   const [selectedActionNode, setSelectedActionNode] = useState<Node | null>(null);
+  const [activeFlowId, setActiveFlowId] = useState<string | null>(null);
   const syncing = useRef(false);
+
+  const isViewingFlow = activeFlowId !== null;
+
+  // Get active data source
+  const activeFlow = activeFlowId ? flowGraphs.find((f) => f.id === activeFlowId) : null;
+  const displayNodes = activeFlow ? activeFlow.nodes : dbNodes;
+  const displayEdges = activeFlow ? activeFlow.edges : dbEdges;
 
   // Sync from parent → local RF state
   useEffect(() => {
     syncing.current = true;
-    setNodes(toRFNodes(dbNodes, dbEdges, taxonomy));
-    setEdges(toRFEdges(dbEdges));
-    setTimeout(() => { syncing.current = false; }, 50);
-  }, [dbNodes, dbEdges, setNodes, setEdges]);
+    setNodes(toRFNodes(displayNodes, displayEdges, taxonomy));
+    setEdges(toRFEdges(displayEdges));
+    setTimeout(() => {
+      syncing.current = false;
+      fitView({ duration: 200 });
+    }, 50);
+  }, [displayNodes, displayEdges, setNodes, setEdges]);
 
   // Emit local changes → parent
   const emitTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -353,10 +375,17 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, onNodesCha
     if (syncing.current) return;
     if (emitTimeout.current) clearTimeout(emitTimeout.current);
     emitTimeout.current = setTimeout(() => {
-      emitNodes(fromRFNodes(nodes));
-      emitEdges(fromRFEdges(edges));
+      const graphNodes = fromRFNodes(nodes);
+      const graphEdges = fromRFEdges(edges);
+      if (isViewingFlow && activeFlowId) {
+        onFlowChange?.(activeFlowId, graphNodes, graphEdges);
+        onFlowSave?.(activeFlowId, graphNodes, graphEdges);
+      } else {
+        emitNodes(graphNodes);
+        emitEdges(graphEdges);
+      }
     }, 100);
-  }, [nodes, edges, emitNodes, emitEdges]);
+  }, [nodes, edges, emitNodes, emitEdges, isViewingFlow, activeFlowId, onFlowChange, onFlowSave]);
 
   const applyActionEffects = useCallback(
     (actionNodeId: string, targetNodeId: string) => {
@@ -743,7 +772,23 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, onNodesCha
         <MiniMap nodeStrokeWidth={3} className="!bg-zinc-100 dark:!bg-zinc-900" />
       </ReactFlow>
 
-      <div className="absolute left-4 top-4 z-10 flex gap-2">
+      <div className="absolute left-4 top-4 z-10 flex items-center gap-2">
+        {flowGraphs.length > 0 && (
+          <select
+            value={activeFlowId ?? ""}
+            onChange={(e) => {
+              setActiveFlowId(e.target.value || null);
+              setSelectedStateNode(null);
+              setSelectedActionNode(null);
+            }}
+            className="rounded-lg border border-zinc-600 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-indigo-500 shadow-md"
+          >
+            <option value="">My Graph</option>
+            {flowGraphs.map((f) => (
+              <option key={f.id} value={f.id}>{f.name}</option>
+            ))}
+          </select>
+        )}
         <button
           onClick={addStateNode}
           className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-md transition-colors hover:bg-indigo-500"
@@ -756,6 +801,17 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, onNodesCha
         >
           + Submitted
         </button>
+        {isViewingFlow && onDeleteFlow && (
+          <button
+            onClick={() => {
+              onDeleteFlow(activeFlowId!);
+              setActiveFlowId(null);
+            }}
+            className="rounded-lg border border-red-600/50 bg-zinc-800 px-3 py-2 text-sm font-medium text-red-400 shadow-md transition-colors hover:bg-red-950"
+          >
+            Delete Flow
+          </button>
+        )}
       </div>
 
       {selectedStateNode && (

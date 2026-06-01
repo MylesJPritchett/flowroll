@@ -219,6 +219,72 @@ export async function saveGraph(
   return {};
 }
 
+// --- Save flow graph ---
+
+export async function saveFlowGraph(
+  graphId: string,
+  nodes: GraphNode[],
+  edges: GraphEdge[],
+): Promise<{ error?: string }> {
+  const session = await auth();
+  if (!session?.user?.email) return { error: "Not authenticated" };
+
+  const supabase = createSupabaseServer();
+  const userId = session.user.email;
+
+  const [deleteNodes, deleteEdges] = await Promise.all([
+    supabase.from("graph_nodes").delete().eq("user_id", userId).eq("graph_id", graphId),
+    supabase.from("graph_edges").delete().eq("user_id", userId).eq("graph_id", graphId),
+  ]);
+
+  if (deleteNodes.error || deleteEdges.error) {
+    return { error: "Failed to save" };
+  }
+
+  if (nodes.length > 0) {
+    const { error } = await supabase.from("graph_nodes").insert(
+      nodes.map((n) => {
+        if (n.type === "action") {
+          return {
+            id: n.id, user_id: userId, graph_id: graphId,
+            label: n.action_name, description: "",
+            position_x: n.position_x, position_y: n.position_y,
+            metadata: { type: "action", action_id: n.action_id, actor: n.actor },
+          };
+        }
+        if (n.type === "finish") {
+          return {
+            id: n.id, user_id: userId, graph_id: graphId,
+            label: n.label, description: "",
+            position_x: n.position_x, position_y: n.position_y,
+            metadata: { type: "finish" },
+          };
+        }
+        return {
+          id: n.id, user_id: userId, graph_id: graphId,
+          label: n.position_name, description: n.description,
+          position_x: n.position_x, position_y: n.position_y,
+          metadata: { type: "state", label: n.label, conditions: n.conditions, giNogi: n.giNogi },
+        };
+      }),
+    );
+    if (error) return { error: "Failed to save nodes" };
+  }
+
+  if (edges.length > 0) {
+    const { error } = await supabase.from("graph_edges").insert(
+      edges.map((e) => ({
+        id: e.id, user_id: userId, graph_id: graphId,
+        source_node_id: e.source_node_id, target_node_id: e.target_node_id,
+        relationship: "", metadata: {},
+      })),
+    );
+    if (error) return { error: "Failed to save edges" };
+  }
+
+  return {};
+}
+
 // --- Sub-graph CRUD ---
 
 export async function loadGraphs(): Promise<Graph[]> {
