@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { loadGraph, saveGraph, saveFlowGraph, loadGraphs, loadGraphById, deleteGraph, type GraphNode, type GraphEdge, type GraphStateNode, type GraphActionNode, type Graph } from "../actions/graph";
+import { loadGraph, saveGraph, saveFlowGraph, loadGraphs, loadGraphById, deleteGraph } from "../actions/graph";
+import type { GraphNode, GraphEdge, GraphStateNode, GraphActionNode } from "@/lib/graph";
 import { loadTaxonomy } from "../actions/taxonomy";
 import GraphEditor, { type FlowGraph } from "./GraphEditor";
 import ImportView from "./ImportView";
@@ -9,8 +10,7 @@ import ListView from "./StateListView";
 
 type View = "list" | "graph" | "import";
 
-import type { Taxonomy } from "../concepts";
-export type { Taxonomy };
+import type { Taxonomy } from "@/lib/concepts";
 
 export default function Workspace() {
   const [nodes, setNodes] = useState<GraphNode[]>([]);
@@ -122,28 +122,14 @@ export default function Workspace() {
   }, []);
 
   const handleInsertFlow = useCallback((flowNodes: GraphNode[], flowEdges: GraphEdge[]) => {
-    // Remap IDs so they don't collide with existing main graph nodes
-    const idMap = new Map<string, string>();
     const now = Date.now();
-    flowNodes.forEach((n, i) => {
-      idMap.set(n.id, `${now}-${i}`);
-    });
-
-    // Offset the flow nodes so they don't land on top of existing nodes
-    // Find the rightmost x in the main graph to place the flow to the right
-    const maxX = nodes.reduce((max, n) => Math.max(max, n.type === "state" ? n.position_x : n.type === "action" ? n.position_x : n.type === "finish" ? n.position_x : 0), 0);
+    const idMap = new Map(flowNodes.map((n, i) => [n.id, `${now}-${i}`]));
+    const maxX = nodes.reduce((max, n) => Math.max(max, n.position_x), 0);
     const offsetX = maxX + 300;
 
-    const newNodes: GraphNode[] = flowNodes.map((n) => {
-      const newId = idMap.get(n.id)!;
-      if (n.type === "action") {
-        return { ...n, id: newId, position_x: n.position_x + offsetX };
-      }
-      if (n.type === "finish") {
-        return { ...n, id: newId, position_x: n.position_x + offsetX };
-      }
-      return { ...n, id: newId, position_x: n.position_x + offsetX };
-    });
+    const newNodes: GraphNode[] = flowNodes.map((n) => ({
+      ...n, id: idMap.get(n.id)!, position_x: n.position_x + offsetX,
+    }));
 
     const newEdges: GraphEdge[] = flowEdges.map((e, i) => ({
       id: `${now}-e${i}`,

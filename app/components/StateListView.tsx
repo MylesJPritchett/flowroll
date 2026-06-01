@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import type { GraphStateNode, GraphActionNode } from "../actions/graph";
-import type { Taxonomy } from "../concepts";
-import { getRoleLabels } from "../concepts";
+import type { GraphStateNode, GraphActionNode } from "@/lib/graph";
+import type { Taxonomy } from "@/lib/concepts";
+import { getRoleLabels } from "@/lib/concepts";
 import StateEditor from "./StateEditor";
 import ActionEditor from "./ActionEditor";
 

@@ -86,10 +86,6 @@ export interface ParseResult {
   warnings: string[];
 }
 
-function trimLine(line: string): string {
-  return line.trim();
-}
-
 function parseConditionRefs(text: string): ParsedConditionRef[] {
   if (!text || text === "—" || text === "-") return [];
   const refs: ParsedConditionRef[] = [];
@@ -145,7 +141,7 @@ export function parseNotation(input: string): ParseResult {
 
   let i = 0;
   while (i < lines.length) {
-    const line = trimLine(lines[i]);
+    const line = lines[i].trim();
 
     // Skip empty lines and comments
     if (!line || line.startsWith("#")) {
@@ -164,8 +160,8 @@ export function parseNotation(input: string): ParseResult {
       // Read indented sub-lines
       while (i < lines.length) {
         const sub = lines[i];
-        if (!sub.match(/^\s/) || trimLine(sub) === "") break;
-        const trimmed = trimLine(sub);
+        if (!sub.match(/^\s/) || sub.trim() === "") break;
+        const trimmed = sub.trim();
         if (trimmed.startsWith("description:")) {
           pos.description = trimmed.slice("description:".length).trim();
         }
@@ -215,8 +211,8 @@ export function parseNotation(input: string): ParseResult {
       // Read indented sub-lines
       while (i < lines.length) {
         const sub = lines[i];
-        if (!sub.match(/^\s/) || trimLine(sub) === "") break;
-        const trimmed = trimLine(sub);
+        if (!sub.match(/^\s/) || sub.trim() === "") break;
+        const trimmed = sub.trim();
         if (trimmed.startsWith("gi/nogi:")) {
           action.giNogi = parseGiNogi(trimmed.slice("gi/nogi:".length));
         } else if (trimmed.startsWith("description:")) {
@@ -254,8 +250,8 @@ export function parseNotation(input: string): ParseResult {
       i++;
       while (i < lines.length) {
         const sub = lines[i];
-        if (!sub.match(/^\s/) || trimLine(sub) === "") break;
-        const trimmed = trimLine(sub);
+        if (!sub.match(/^\s/) || sub.trim() === "") break;
+        const trimmed = sub.trim();
         if (trimmed.startsWith("role A")) {
           // role A (Label): conditions or role A: conditions
           const colonIdx = trimmed.indexOf(":");

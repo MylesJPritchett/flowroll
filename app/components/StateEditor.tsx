@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { getRoleLabels, getFilteredOptions, getAllowedOptionIds } from "../concepts";
-import type { StateCondition, Taxonomy } from "../concepts";
-import type { GiNogi } from "../actions/graph";
+import { getRoleLabels, getFilteredOptions, getAllowedOptionIds } from "@/lib/concepts";
+import type { StateCondition, Taxonomy } from "@/lib/concepts";
+import type { GiNogi } from "@/lib/graph";
 import { addPosition, addState } from "../actions/taxonomy";
 
 export interface StateData {

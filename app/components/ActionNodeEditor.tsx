@@ -3,7 +3,7 @@
 import type { Node } from "@xyflow/react";
 import ActionEditor from "./ActionEditor";
 import type { ActionData } from "./ActionEditor";
-import type { Taxonomy } from "../concepts";
+import type { Taxonomy } from "@/lib/concepts";
 
 interface ActionNodeEditorProps {
   node: Node;

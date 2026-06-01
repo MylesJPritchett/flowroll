@@ -7,7 +7,7 @@ import {
   saveFlowGraph,
   deleteGraph,
 } from "@/app/actions/graph";
-import type { GraphNode, GraphEdge } from "@/app/actions/graph";
+import type { GraphNode, GraphEdge } from "@/lib/graph";
 
 const db = getTestClient();
 

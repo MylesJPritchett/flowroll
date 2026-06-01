@@ -3,8 +3,8 @@
 import type { Node } from "@xyflow/react";
 import StateEditor from "./StateEditor";
 import type { StateData } from "./StateEditor";
-import type { StateCondition, Taxonomy } from "../concepts";
-import type { GiNogi } from "../actions/graph";
+import type { StateCondition, Taxonomy } from "@/lib/concepts";
+import type { GiNogi } from "@/lib/graph";
 
 interface NodeEditorProps {
   node: Node;

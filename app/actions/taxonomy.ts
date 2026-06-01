@@ -1,7 +1,7 @@
 "use server";
 
-import { auth } from "@/auth";
-import { createSupabaseServer } from "@/lib/supabase";
+import { createSupabaseServer, getUserId } from "@/lib/supabase";
+import { isAdmin } from "./admin";
 
 // --- Types ---
 
@@ -76,13 +76,6 @@ export interface State extends OwnershipFields {
   conditions: StateConditionEntry[];
   gi_nogi: "" | "gi" | "nogi";
   sort_order: number;
-}
-
-// --- Helpers ---
-
-async function getUserId(): Promise<string | null> {
-  const session = await auth();
-  return session?.user?.email ?? null;
 }
 
 // --- Load ---
@@ -417,8 +410,6 @@ export async function setOfficial(
   id: string,
   isOfficial: boolean,
 ): Promise<boolean> {
-  // Admin check
-  const { isAdmin } = await import("./admin");
   if (!(await isAdmin())) return false;
   const supabase = createSupabaseServer();
   const { error } = await supabase.from(table).update({ is_official: isOfficial }).eq("id", id);

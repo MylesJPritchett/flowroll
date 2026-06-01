@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import type { Taxonomy } from "../concepts";
+import type { Taxonomy } from "@/lib/concepts";
 import type { Action } from "../actions/taxonomy";
 import { addAction } from "../actions/taxonomy";
 

@@ -1,4 +1,4 @@
-import type { Position, ConditionGroup, ConditionOption, Action, PositionRequirement, ConditionRef, ConditionRefRole, State } from "./actions/taxonomy";
+import type { Position, ConditionGroup, ConditionOption, Action, PositionRequirement, ConditionRef, ConditionRefRole, State } from "@/app/actions/taxonomy";
 
 // Re-export taxonomy types for convenience
 export type { Position, ConditionGroup, ConditionOption, Action, PositionRequirement, ConditionRef, ConditionRefRole, State };
@@ -59,4 +59,23 @@ export interface StateCondition {
   groupId: string;
   value: string;
   role: "A" | "B";
+}
+
+/** Apply an action's adds/removes to a set of conditions, resolving actor/opponent roles. */
+export function computeActionEffects(
+  baseConditions: StateCondition[],
+  action: { adds_conditions: { groupId: string; value: string; role: string }[]; removes_conditions: { groupId: string; value: string; role: string }[] },
+  actor: "A" | "B",
+): StateCondition[] {
+  let conditions = [...baseConditions];
+  for (const rem of action.removes_conditions) {
+    const resolvedRole = resolveConditionRole(rem.role as ConditionRefRole, actor);
+    conditions = conditions.filter((c) => !(c.groupId === rem.groupId && c.value === rem.value && c.role === resolvedRole));
+  }
+  for (const add of action.adds_conditions) {
+    const resolvedRole = resolveConditionRole(add.role as ConditionRefRole, actor);
+    conditions = conditions.filter((c) => !(c.groupId === add.groupId && c.role === resolvedRole));
+    conditions.push({ groupId: add.groupId, value: add.value, role: resolvedRole });
+  }
+  return conditions;
 }

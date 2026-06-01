@@ -23,10 +23,9 @@ import ActionNode from "./ActionNode";
 import FinishNode from "./FinishNode";
 import NodeEditor from "./NodeEditor";
 import ActionNodeEditor from "./ActionNodeEditor";
-import type { GraphNode, GraphEdge, GraphStateNode, GraphActionNode, GraphFinishNode } from "../actions/graph";
-import { getRoleLabels, resolveConditionRole } from "../concepts";
-import type { StateCondition, Taxonomy } from "../concepts";
-import type { GiNogi } from "../actions/graph";
+import type { GraphNode, GraphEdge, GraphStateNode, GraphActionNode, GraphFinishNode, GiNogi } from "@/lib/graph";
+import { getRoleLabels, resolveConditionRole, computeActionEffects } from "@/lib/concepts";
+import type { StateCondition, Taxonomy } from "@/lib/concepts";
 
 const nodeTypes: NodeTypes = {
   state: BJJNode,
@@ -395,31 +394,15 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, flowGraphs
       const actionNode = nodes.find((n) => n.id === actionNodeId);
       if (!actionNode || actionNode.type !== "action") return;
       const actionData = actionNode.data as Record<string, unknown>;
-      const actionId = actionData.action_id as string;
+      const action = taxonomy.actions.find((a) => a.id === (actionData.action_id as string));
+      if (!action || (action.adds_conditions.length === 0 && action.removes_conditions.length === 0)) return;
       const actor = (actionData.actor as "A" | "B") ?? "A";
-      const action = taxonomy.actions.find((a) => a.id === actionId);
-      if (!action) return;
-      if (action.adds_conditions.length === 0 && action.removes_conditions.length === 0) return;
 
       setNodes((nds) =>
         nds.map((n) => {
           if (n.id !== targetNodeId || n.type !== "state") return n;
           const d = n.data as Record<string, unknown>;
-          let conditions = (d.conditions as StateCondition[]) ?? [];
-
-          // Remove conditions (resolve actor/opponent → A/B)
-          for (const rem of action.removes_conditions) {
-            const resolvedRole = resolveConditionRole(rem.role, actor);
-            conditions = conditions.filter((c) => !(c.groupId === rem.groupId && c.value === rem.value && c.role === resolvedRole));
-          }
-
-          // Add conditions (resolve actor/opponent → A/B, replace within same group+role since exclusive)
-          for (const add of action.adds_conditions) {
-            const resolvedRole = resolveConditionRole(add.role, actor);
-            conditions = conditions.filter((c) => !(c.groupId === add.groupId && c.role === resolvedRole));
-            conditions.push({ groupId: add.groupId, value: add.value, role: resolvedRole });
-          }
-
+          const conditions = computeActionEffects((d.conditions as StateCondition[]) ?? [], action, actor);
           return { ...n, data: { ...d, conditions } };
         }),
       );
@@ -503,21 +486,10 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, flowGraphs
         const parentState = inEdge ? nodes.find((n) => n.id === inEdge.source && n.type === "state") : undefined;
         const parentData = parentState?.data as Record<string, unknown> | undefined;
 
-        let expectedConditions: StateCondition[] = parentData ? [...((parentData.conditions as StateCondition[]) ?? [])] : [];
+        const baseConditions: StateCondition[] = parentData ? [...((parentData.conditions as StateCondition[]) ?? [])] : [];
         const expectedName = (parentData?.position_name as string) ?? "New State";
         const expectedGiNogi = (parentData?.giNogi as GiNogi) ?? "";
-
-        if (action) {
-          for (const rem of action.removes_conditions) {
-            const resolvedRole = resolveConditionRole(rem.role, actor);
-            expectedConditions = expectedConditions.filter((c) => !(c.groupId === rem.groupId && c.value === rem.value && c.role === resolvedRole));
-          }
-          for (const add of action.adds_conditions) {
-            const resolvedRole = resolveConditionRole(add.role, actor);
-            expectedConditions = expectedConditions.filter((c) => !(c.groupId === add.groupId && c.role === resolvedRole));
-            expectedConditions.push({ groupId: add.groupId, value: add.value, role: resolvedRole });
-          }
-        }
+        const expectedConditions = action ? computeActionEffects(baseConditions, action, actor) : baseConditions;
 
         justCreatedNode.current = true;
         setPendingSuggestion({
@@ -648,23 +620,11 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, flowGraphs
         const targetId = outEdge?.target;
         if (!action || !targetId) return updated;
 
-        // Find the source state (upstream of this action)
         const inEdge = edges.find((e) => e.target === id);
         const sourceNode = inEdge ? updated.find((n) => n.id === inEdge.source && n.type === "state") : undefined;
         const sourceData = sourceNode?.data as Record<string, unknown> | undefined;
         const baseConditions: StateCondition[] = sourceData ? [...((sourceData.conditions as StateCondition[]) ?? [])] : [];
-
-        // Apply effects with the new actor
-        let conditions = baseConditions;
-        for (const rem of action.removes_conditions) {
-          const resolvedRole = resolveConditionRole(rem.role, data.actor);
-          conditions = conditions.filter((c) => !(c.groupId === rem.groupId && c.value === rem.value && c.role === resolvedRole));
-        }
-        for (const add of action.adds_conditions) {
-          const resolvedRole = resolveConditionRole(add.role, data.actor);
-          conditions = conditions.filter((c) => !(c.groupId === add.groupId && c.role === resolvedRole));
-          conditions.push({ groupId: add.groupId, value: add.value, role: resolvedRole });
-        }
+        const conditions = computeActionEffects(baseConditions, action, data.actor);
 
         return updated.map((n) =>
           n.id === targetId && n.type === "state"

@@ -1,15 +1,9 @@
 "use server";
 
-import { auth } from "@/auth";
-import { createSupabaseServer } from "@/lib/supabase";
-import { parseNotation, type ParseResult, type ParsedConditionRef } from "@/lib/import-parser";
+import { createSupabaseServer, getUserId } from "@/lib/supabase";
+import { parseNotation, type ParsedConditionRef } from "@/lib/import-parser";
 import type { ConditionRef } from "./taxonomy";
 import { loadTaxonomy } from "./taxonomy";
-
-async function getUserId(): Promise<string | null> {
-  const session = await auth();
-  return session?.user?.email ?? null;
-}
 
 export interface ImportResult {
   positionsCreated: number;
@@ -285,10 +279,8 @@ export async function importNotation(input: string): Promise<ImportResult> {
   // --- 4. Create taxonomy states ---
   // Lookup for matching existing states: "positionId:name" -> state
   const statesByKey = new Map<string, { id: string; position_id: string; name: string }>();
-  if (taxonomy.states) {
-    for (const s of taxonomy.states) {
-      statesByKey.set(`${s.position_id}:${s.name.toLowerCase()}`, s);
-    }
+  for (const s of taxonomy.states) {
+    statesByKey.set(`${s.position_id}:${s.name.toLowerCase()}`, s);
   }
 
   for (const s of parsed.states) {
@@ -488,29 +480,14 @@ export async function importNotation(input: string): Promise<ImportResult> {
         const posName = pos?.name ?? step.label;
         const stateLabel = matchedTaxState?.name ?? matchedParsed?.label ?? (pos && pos.name !== step.label ? step.label : "");
 
-        // Get conditions from taxonomy state or parsed state
-        let flowConditions: { groupId: string; value: string; role: "A" | "B" }[] = [];
-        if (matchedTaxState) {
-          // Load full state data from statesByKey doesn't have conditions, check parsed
-          // The taxonomy state conditions are already in the DB; for the graph node, use parsed state conditions if available
-          if (matchedParsed) {
-            for (const c of matchedParsed.roleA) {
+        // Get conditions from parsed state definition (if available)
+        const flowConditions: { groupId: string; value: string; role: "A" | "B" }[] = [];
+        if (matchedParsed) {
+          for (const [role, refs] of [["A", matchedParsed.roleA], ["B", matchedParsed.roleB]] as const) {
+            for (const c of refs) {
               const group = groupsByName.get(c.group.toLowerCase());
-              if (group) flowConditions.push({ groupId: group.id, value: c.value, role: "A" });
+              if (group) flowConditions.push({ groupId: group.id, value: c.value, role });
             }
-            for (const c of matchedParsed.roleB) {
-              const group = groupsByName.get(c.group.toLowerCase());
-              if (group) flowConditions.push({ groupId: group.id, value: c.value, role: "B" });
-            }
-          }
-        } else if (matchedParsed) {
-          for (const c of matchedParsed.roleA) {
-            const group = groupsByName.get(c.group.toLowerCase());
-            if (group) flowConditions.push({ groupId: group.id, value: c.value, role: "A" });
-          }
-          for (const c of matchedParsed.roleB) {
-            const group = groupsByName.get(c.group.toLowerCase());
-            if (group) flowConditions.push({ groupId: group.id, value: c.value, role: "B" });
           }
         }
 

@@ -9,7 +9,8 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:integration": "vitest run --config vitest.integration.config.ts",
-    "test:full": "vitest run && vitest run --config vitest.integration.config.ts"
+    "test:full": "vitest run && vitest run --config vitest.integration.config.ts",
+    "check": "tsc --noEmit && next build"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.100.1",

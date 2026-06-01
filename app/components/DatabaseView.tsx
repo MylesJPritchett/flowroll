@@ -27,7 +27,7 @@ import {
   type PositionRequirement,
   type ConditionRef,
 } from "../actions/taxonomy";
-import type { ConditionRefRole, State } from "../concepts";
+import type { ConditionRefRole, State } from "@/lib/concepts";
 
 function OfficialBadge() {
   return <span className="text-green-400 text-[10px]" title="Official">&#10003;</span>;
@@ -88,11 +88,8 @@ export default function DatabaseView({ mode, userId }: DatabaseViewProps) {
     });
   }, [mode]);
 
-  const canEdit = (item: { created_by: string | null; is_official: boolean }) => {
-    if (mode === "admin") return true;
-    if (item.created_by === userId) return true;
-    return false;
-  };
+  const canEdit = (item: { created_by: string | null }) =>
+    mode === "admin" || item.created_by === userId;
 
   const toggleMapping = async (posId: string, optionId: string, role: "A" | "B") => {
     const key = `${posId}:${role}`;

@@ -1,7 +1,7 @@
 "use client";
 
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import type { StateCondition } from "../concepts";
+import type { StateCondition } from "@/lib/concepts";
 
 export default function BJJNode({ data }: NodeProps) {
   const d = data as Record<string, unknown>;

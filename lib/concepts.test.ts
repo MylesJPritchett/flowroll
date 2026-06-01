@@ -4,9 +4,11 @@ import {
   getRoleLabels,
   getFilteredOptions,
   getAllowedOptionIds,
+  computeActionEffects,
+  type StateCondition,
   type Taxonomy,
 } from "./concepts";
-import type { Position, ConditionGroup, ConditionOption } from "./actions/taxonomy";
+import type { Position, ConditionGroup, ConditionOption } from "@/app/actions/taxonomy";
 
 // --- resolveConditionRole ---
 
@@ -175,5 +177,94 @@ describe("getAllowedOptionIds", () => {
   it("returns null for unknown position", () => {
     const result = getAllowedOptionIds("Nonexistent", "A", taxonomy);
     expect(result).toBeNull();
+  });
+});
+
+// --- computeActionEffects ---
+
+describe("computeActionEffects", () => {
+  const base: StateCondition[] = [
+    { groupId: "g1", value: "Collar", role: "A" },
+    { groupId: "g2", value: "Closed", role: "B" },
+  ];
+
+  it("returns base conditions when action has no effects", () => {
+    const action = { adds_conditions: [], removes_conditions: [] };
+    const result = computeActionEffects(base, action, "A");
+    expect(result).toEqual(base);
+  });
+
+  it("removes a condition matching actor role", () => {
+    const action = {
+      adds_conditions: [],
+      removes_conditions: [{ groupId: "g1", value: "Collar", role: "actor" }],
+    };
+    const result = computeActionEffects(base, action, "A");
+    expect(result).toEqual([{ groupId: "g2", value: "Closed", role: "B" }]);
+  });
+
+  it("resolves opponent to the opposite role", () => {
+    const action = {
+      adds_conditions: [],
+      removes_conditions: [{ groupId: "g2", value: "Closed", role: "opponent" }],
+    };
+    // Actor is A, opponent resolves to B
+    const result = computeActionEffects(base, action, "A");
+    expect(result).toEqual([{ groupId: "g1", value: "Collar", role: "A" }]);
+  });
+
+  it("adds a condition for the actor", () => {
+    const action = {
+      adds_conditions: [{ groupId: "g3", value: "Hooks", role: "actor" }],
+      removes_conditions: [],
+    };
+    const result = computeActionEffects(base, action, "B");
+    expect(result).toContainEqual({ groupId: "g3", value: "Hooks", role: "B" });
+    expect(result).toHaveLength(3);
+  });
+
+  it("replaces existing condition in same group+role when adding", () => {
+    const action = {
+      adds_conditions: [{ groupId: "g1", value: "Wrist", role: "actor" }],
+      removes_conditions: [],
+    };
+    const result = computeActionEffects(base, action, "A");
+    // g1/A should now be Wrist, not Collar
+    expect(result.find((c) => c.groupId === "g1" && c.role === "A")?.value).toBe("Wrist");
+    expect(result).toHaveLength(2);
+  });
+
+  it("applies removes before adds", () => {
+    const conditions: StateCondition[] = [{ groupId: "g1", value: "Old", role: "A" }];
+    const action = {
+      removes_conditions: [{ groupId: "g1", value: "Old", role: "actor" }],
+      adds_conditions: [{ groupId: "g1", value: "New", role: "actor" }],
+    };
+    const result = computeActionEffects(conditions, action, "A");
+    expect(result).toEqual([{ groupId: "g1", value: "New", role: "A" }]);
+  });
+
+  it("does not mutate the input array", () => {
+    const original = [...base];
+    const action = {
+      adds_conditions: [{ groupId: "g3", value: "Hooks", role: "actor" }],
+      removes_conditions: [{ groupId: "g1", value: "Collar", role: "actor" }],
+    };
+    computeActionEffects(base, action, "A");
+    expect(base).toEqual(original);
+  });
+
+  it("handles actor B with opponent removes correctly", () => {
+    const conditions: StateCondition[] = [
+      { groupId: "g1", value: "Grip", role: "A" },
+      { groupId: "g1", value: "Grip", role: "B" },
+    ];
+    const action = {
+      adds_conditions: [],
+      removes_conditions: [{ groupId: "g1", value: "Grip", role: "opponent" }],
+    };
+    // Actor is B, opponent = A
+    const result = computeActionEffects(conditions, action, "B");
+    expect(result).toEqual([{ groupId: "g1", value: "Grip", role: "B" }]);
   });
 });
