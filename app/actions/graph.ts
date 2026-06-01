@@ -39,6 +39,16 @@ export interface GraphEdge {
   target_node_id: string;
 }
 
+// --- Graph (container) type ---
+
+export interface Graph {
+  id: string;
+  name: string;
+  description: string;
+  created_at: string;
+  updated_at: string;
+}
+
 // --- Load ---
 
 export async function loadGraph(): Promise<{
@@ -55,11 +65,13 @@ export async function loadGraph(): Promise<{
     supabase
       .from("graph_nodes")
       .select("id, label, description, position_x, position_y, metadata")
-      .eq("user_id", userId),
+      .eq("user_id", userId)
+      .is("graph_id", null),
     supabase
       .from("graph_edges")
       .select("id, source_node_id, target_node_id")
-      .eq("user_id", userId),
+      .eq("user_id", userId)
+      .is("graph_id", null),
   ]);
 
   if (nodesResult.error || edgesResult.error) {
@@ -114,8 +126,8 @@ export async function saveGraph(
   const userId = session.user.email;
 
   const [deleteNodes, deleteEdges] = await Promise.all([
-    supabase.from("graph_nodes").delete().eq("user_id", userId),
-    supabase.from("graph_edges").delete().eq("user_id", userId),
+    supabase.from("graph_nodes").delete().eq("user_id", userId).is("graph_id", null),
+    supabase.from("graph_edges").delete().eq("user_id", userId).is("graph_id", null),
   ]);
 
   if (deleteNodes.error || deleteEdges.error) {
@@ -171,4 +183,122 @@ export async function saveGraph(
     }
   }
   return {};
+}
+
+// --- Sub-graph CRUD ---
+
+export async function loadGraphs(): Promise<Graph[]> {
+  const session = await auth();
+  if (!session?.user?.email) return [];
+
+  const supabase = createSupabaseServer();
+  const { data, error } = await supabase
+    .from("graphs")
+    .select("*")
+    .eq("user_id", session.user.email)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("Failed to load graphs:", error);
+    return [];
+  }
+  return data as Graph[];
+}
+
+export async function loadGraphById(graphId: string): Promise<{
+  graph: Graph;
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+} | null> {
+  const session = await auth();
+  if (!session?.user?.email) return null;
+
+  const supabase = createSupabaseServer();
+  const userId = session.user.email;
+
+  const [graphResult, nodesResult, edgesResult] = await Promise.all([
+    supabase.from("graphs").select("*").eq("id", graphId).eq("user_id", userId).single(),
+    supabase
+      .from("graph_nodes")
+      .select("id, label, description, position_x, position_y, metadata")
+      .eq("user_id", userId)
+      .eq("graph_id", graphId),
+    supabase
+      .from("graph_edges")
+      .select("id, source_node_id, target_node_id")
+      .eq("user_id", userId)
+      .eq("graph_id", graphId),
+  ]);
+
+  if (graphResult.error || nodesResult.error || edgesResult.error) return null;
+
+  const nodes: GraphNode[] = nodesResult.data.map((row: Record<string, unknown>) => {
+    const meta = (row.metadata as Record<string, unknown>) ?? {};
+    if (meta.type === "action") {
+      return {
+        id: row.id as string,
+        type: "action" as const,
+        action_id: (meta.action_id as string) ?? "",
+        action_name: (row.label as string) ?? "",
+        actor: (meta.actor as "A" | "B") ?? "A",
+        position_x: row.position_x as number,
+        position_y: row.position_y as number,
+      };
+    }
+    return {
+      id: row.id as string,
+      type: "state" as const,
+      position_name: (row.label as string) ?? "New State",
+      description: (row.description as string) ?? "",
+      position_x: row.position_x as number,
+      position_y: row.position_y as number,
+      conditions: (meta.conditions as StateCondition[]) ?? [],
+      giNogi: (meta.giNogi as GiNogi) ?? "",
+    };
+  });
+
+  const edges: GraphEdge[] = edgesResult.data.map((row: Record<string, unknown>) => ({
+    id: row.id as string,
+    source_node_id: row.source_node_id as string,
+    target_node_id: row.target_node_id as string,
+  }));
+
+  return { graph: graphResult.data as Graph, nodes, edges };
+}
+
+export async function createGraph(name: string, description = ""): Promise<Graph | null> {
+  const session = await auth();
+  if (!session?.user?.email) return null;
+
+  const supabase = createSupabaseServer();
+  const { data, error } = await supabase
+    .from("graphs")
+    .insert({ user_id: session.user.email, name, description })
+    .select()
+    .single();
+
+  if (error) {
+    console.error("Failed to create graph:", error);
+    return null;
+  }
+  return data as Graph;
+}
+
+export async function deleteGraph(graphId: string): Promise<boolean> {
+  const session = await auth();
+  if (!session?.user?.email) return false;
+
+  const supabase = createSupabaseServer();
+  // Nodes/edges cascade-delete via FK
+  const { error } = await supabase
+    .from("graphs")
+    .delete()
+    .eq("id", graphId)
+    .eq("user_id", session.user.email);
+
+  if (error) {
+    console.error("Failed to delete graph:", error);
+    return false;
+  }
+  return true;
 }

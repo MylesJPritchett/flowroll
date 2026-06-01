@@ -14,6 +14,7 @@ interface OwnershipFields {
 export interface Position extends OwnershipFields {
   id: string;
   name: string;
+  description: string;
   role_a: string;
   role_b: string;
   sort_order: number;
@@ -153,7 +154,7 @@ export async function loadTaxonomy(): Promise<{
 
 // --- Positions CRUD ---
 
-export async function addPosition(name: string, roleA: string, roleB: string): Promise<Position | null> {
+export async function addPosition(name: string, roleA: string, roleB: string, description = ""): Promise<Position | null> {
   const userId = await getUserId();
   const supabase = createSupabaseServer();
   const { data: maxRow } = await supabase.from("positions").select("sort_order").order("sort_order", { ascending: false }).limit(1).single();
@@ -161,7 +162,7 @@ export async function addPosition(name: string, roleA: string, roleB: string): P
 
   const { data, error } = await supabase
     .from("positions")
-    .insert({ name, role_a: roleA, role_b: roleB, sort_order: sortOrder, created_by: userId, is_official: false, is_public: true })
+    .insert({ name, description, role_a: roleA, role_b: roleB, sort_order: sortOrder, created_by: userId, is_official: false, is_public: true })
     .select()
     .single();
 
@@ -183,7 +184,7 @@ export async function addPosition(name: string, roleA: string, roleB: string): P
   return data;
 }
 
-export async function updatePosition(id: string, updates: { name?: string; role_a?: string; role_b?: string; is_public?: boolean }): Promise<boolean> {
+export async function updatePosition(id: string, updates: { name?: string; description?: string; role_a?: string; role_b?: string; is_public?: boolean }): Promise<boolean> {
   const supabase = createSupabaseServer();
   const { error } = await supabase.from("positions").update(updates).eq("id", id);
   if (error) { console.error("Failed to update position:", error); return false; }

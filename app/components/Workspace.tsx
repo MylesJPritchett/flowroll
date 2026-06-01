@@ -4,9 +4,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { loadGraph, saveGraph, type GraphNode, type GraphEdge, type GraphStateNode, type GraphActionNode } from "../actions/graph";
 import { loadTaxonomy } from "../actions/taxonomy";
 import GraphEditor from "./GraphEditor";
+import ImportView from "./ImportView";
 import ListView from "./StateListView";
 
-type View = "list" | "graph";
+type View = "list" | "graph" | "import";
 
 import type { Taxonomy } from "../concepts";
 export type { Taxonomy };
@@ -110,7 +111,7 @@ export default function Workspace() {
   return (
     <div className="absolute inset-0 flex flex-col">
       <div className="flex items-center gap-1 border-b border-zinc-800 bg-zinc-950 px-4 py-1.5">
-        {(["list", "graph"] as const).map((v) => (
+        {(["list", "graph", "import"] as const).map((v) => (
           <button
             key={v}
             onClick={() => setView(v)}
@@ -120,7 +121,7 @@ export default function Workspace() {
                 : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"
             }`}
           >
-            {v === "list" ? "List" : "Graph"}
+            {v === "list" ? "List" : v === "graph" ? "Graph" : "Import"}
           </button>
         ))}
         <a
@@ -135,7 +136,20 @@ export default function Workspace() {
       </div>
 
       <div className="relative flex-1">
-        {view === "list" ? (
+        {view === "import" ? (
+          <ImportView
+            onImported={() => {
+              refreshTaxonomy();
+              // Reload graph to pick up new state nodes
+              loadGraph().then((graphData) => {
+                if (graphData) {
+                  setNodes(graphData.nodes);
+                  setEdges(graphData.edges);
+                }
+              });
+            }}
+          />
+        ) : view === "list" ? (
           <ListView
             stateNodes={nodes.filter((n): n is GraphStateNode => n.type === "state")}
             actionNodes={nodes.filter((n): n is GraphActionNode => n.type === "action")}

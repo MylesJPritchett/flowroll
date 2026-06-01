@@ -430,7 +430,7 @@ function PositionRowWithReqs({
   requirements: PositionRequirement[];
   editable: boolean;
   mode: "database" | "admin";
-  onUpdate: (updates: { name?: string; role_a?: string; role_b?: string }) => void;
+  onUpdate: (updates: { name?: string; description?: string; role_a?: string; role_b?: string }) => void;
   onDelete: () => void;
   onToggleOfficial: () => void;
   onToggleRequirement: (optionId: string, role: "A" | "B", required: boolean) => void;
@@ -476,6 +476,17 @@ function PositionRowWithReqs({
       </div>
       {expanded && (
         <div className="px-4 pb-3 pt-1">
+          <div className="mb-3">
+            <div className="text-[10px] font-medium text-zinc-400 mb-1">Description</div>
+            <textarea
+              value={position.description}
+              disabled={!editable}
+              onChange={(e) => onUpdate({ description: e.target.value })}
+              placeholder="Notes about this position..."
+              rows={2}
+              className={`w-full rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-100 outline-none focus:border-indigo-500 resize-y ${!editable ? "opacity-50" : ""}`}
+            />
+          </div>
           <div className="text-[10px] font-medium text-zinc-400 mb-2">Required Conditions</div>
           <p className="text-[9px] text-zinc-600 mb-2">Toggle conditions that MUST be present for this position to be valid.</p>
           <div className="space-y-2">
@@ -646,6 +657,17 @@ function ActionRowWithPrereqs({
       </div>
       {expanded && (
         <div className="px-4 pb-3 pt-1 space-y-3">
+          <div>
+            <div className="text-[10px] font-medium text-zinc-400 mb-1">Description</div>
+            <textarea
+              value={action.description}
+              disabled={!editable}
+              onChange={(e) => onUpdate({ description: e.target.value })}
+              placeholder="Notes about this action..."
+              rows={2}
+              className={`w-full rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-100 outline-none focus:border-indigo-500 resize-y ${!editable ? "opacity-50" : ""}`}
+            />
+          </div>
           {renderConditionPicker(
             "Required Conditions (must be present to use this action)",
             action.required_conditions,
