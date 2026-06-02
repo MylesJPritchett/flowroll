@@ -5,8 +5,8 @@ export type GiNogi = "gi" | "nogi" | "";
 // --- Media types ---
 
 export interface MediaItem {
-  type: "image" | "youtube";
-  url: string;
+  type: "image" | "youtube" | "text";
+  url: string; // empty for text type
   caption?: string;
   start?: number; // YouTube start time in seconds
   end?: number;   // YouTube end time in seconds

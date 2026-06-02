@@ -43,7 +43,7 @@ interface MediaEditorProps {
 }
 
 export default function MediaEditor({ media, onChange }: MediaEditorProps) {
-  const [adding, setAdding] = useState(false);
+  const [adding, setAdding] = useState<false | "url" | "text">(false);
   const [url, setUrl] = useState("");
   const [caption, setCaption] = useState("");
   const [startTime, setStartTime] = useState("");
@@ -53,7 +53,15 @@ export default function MediaEditor({ media, onChange }: MediaEditorProps) {
   const isImage = !isYouTube && /\.(jpg|jpeg|png|gif|webp|svg|avif)(\?.*)?$/i.test(url);
   const isValidUrl = isYouTube || isImage;
 
+  const resetForm = () => { setAdding(false); setUrl(""); setCaption(""); setStartTime(""); setEndTime(""); };
+
   const addMedia = () => {
+    if (adding === "text") {
+      if (!caption.trim()) return;
+      onChange([...media, { type: "text", url: "", caption: caption.trim() }]);
+      resetForm();
+      return;
+    }
     if (!url.trim()) return;
     const item: MediaItem = isYouTube
       ? {
@@ -69,11 +77,7 @@ export default function MediaEditor({ media, onChange }: MediaEditorProps) {
           ...(caption.trim() ? { caption: caption.trim() } : {}),
         };
     onChange([...media, item]);
-    setUrl("");
-    setCaption("");
-    setStartTime("");
-    setEndTime("");
-    setAdding(false);
+    resetForm();
   };
 
   const removeMedia = (index: number) => {
@@ -89,9 +93,10 @@ export default function MediaEditor({ media, onChange }: MediaEditorProps) {
         <div className="space-y-2 mb-2">
           {media.map((item, i) => (
             <div key={i} className="rounded-md border border-zinc-700 bg-zinc-900 overflow-hidden">
-              {item.type === "youtube" ? (
+              {item.type === "youtube" && (
                 <YouTubeEmbed url={item.url} start={item.start} end={item.end} />
-              ) : (
+              )}
+              {item.type === "image" && (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={item.url}
@@ -99,18 +104,25 @@ export default function MediaEditor({ media, onChange }: MediaEditorProps) {
                   className="w-full max-h-48 object-contain bg-black"
                 />
               )}
-              <div className="flex items-center justify-between px-2 py-1">
-                <span className="text-[10px] text-zinc-400 truncate flex-1">
-                  {item.caption || (item.type === "youtube" ? "YouTube video" : "Image")}
-                  {item.type === "youtube" && item.start !== undefined && (
-                    <span className="ml-1 text-zinc-500">
-                      {formatTime(item.start)}{item.end !== undefined ? `–${formatTime(item.end)}` : ""}
-                    </span>
+              <div className="flex items-start justify-between px-2 py-1.5 gap-1">
+                <span className="text-[10px] text-zinc-400 flex-1 whitespace-pre-wrap break-words">
+                  {item.type === "text" && (
+                    <span className="text-zinc-300">{item.caption}</span>
+                  )}
+                  {item.type !== "text" && (
+                    <>
+                      {item.caption || (item.type === "youtube" ? "YouTube video" : "Image")}
+                      {item.type === "youtube" && item.start !== undefined && (
+                        <span className="ml-1 text-zinc-500">
+                          {formatTime(item.start)}{item.end !== undefined ? `–${formatTime(item.end)}` : ""}
+                        </span>
+                      )}
+                    </>
                   )}
                 </span>
                 <button
                   onClick={() => removeMedia(i)}
-                  className="ml-1 text-zinc-500 hover:text-red-400 text-[10px] transition-colors"
+                  className="shrink-0 text-zinc-500 hover:text-red-400 text-[10px] transition-colors"
                 >
                   remove
                 </button>
@@ -121,7 +133,7 @@ export default function MediaEditor({ media, onChange }: MediaEditorProps) {
       )}
 
       {/* Add media form */}
-      {adding ? (
+      {adding === "url" && (
         <div className="rounded-md border border-zinc-700 bg-zinc-900 p-2 space-y-2">
           <input
             type="text"
@@ -131,7 +143,7 @@ export default function MediaEditor({ media, onChange }: MediaEditorProps) {
             onChange={(e) => setUrl(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && isValidUrl) { e.preventDefault(); addMedia(); }
-              if (e.key === "Escape") setAdding(false);
+              if (e.key === "Escape") resetForm();
             }}
             className="w-full rounded-md border border-zinc-600 bg-zinc-800 px-2 py-1 text-[11px] text-zinc-100 placeholder:text-zinc-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
           />
@@ -164,40 +176,58 @@ export default function MediaEditor({ media, onChange }: MediaEditorProps) {
               </div>
             </div>
           )}
-          <input
-            type="text"
+          <textarea
             value={caption}
             placeholder="Caption (optional)"
             onChange={(e) => setCaption(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && isValidUrl) { e.preventDefault(); addMedia(); }
-              if (e.key === "Escape") setAdding(false);
-            }}
-            className="w-full rounded-md border border-zinc-600 bg-zinc-800 px-2 py-1 text-[11px] text-zinc-100 placeholder:text-zinc-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+            onKeyDown={(e) => { if (e.key === "Escape") resetForm(); }}
+            rows={2}
+            className="w-full rounded-md border border-zinc-600 bg-zinc-800 px-2 py-1 text-[11px] text-zinc-100 placeholder:text-zinc-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 resize-y"
           />
           <div className="flex gap-1">
-            <button
-              onClick={addMedia}
-              disabled={!isValidUrl}
-              className="rounded-md bg-indigo-600 px-2 py-1 text-[10px] font-medium text-white hover:bg-indigo-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-            >
+            <button onClick={addMedia} disabled={!isValidUrl}
+              className="rounded-md bg-indigo-600 px-2 py-1 text-[10px] font-medium text-white hover:bg-indigo-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
               Add
             </button>
-            <button
-              onClick={() => { setAdding(false); setUrl(""); setCaption(""); setStartTime(""); setEndTime(""); }}
-              className="text-[10px] text-zinc-500 hover:text-zinc-300 transition-colors px-1"
-            >
-              Cancel
-            </button>
+            <button onClick={resetForm} className="text-[10px] text-zinc-500 hover:text-zinc-300 transition-colors px-1">Cancel</button>
           </div>
         </div>
-      ) : (
-        <button
-          onClick={() => setAdding(true)}
-          className="w-full rounded-md border border-dashed border-zinc-700 px-3 py-1.5 text-[11px] text-zinc-500 transition-colors hover:border-zinc-500 hover:text-zinc-300"
-        >
-          + Add image or video
-        </button>
+      )}
+      {adding === "text" && (
+        <div className="rounded-md border border-zinc-700 bg-zinc-900 p-2 space-y-2">
+          <textarea
+            autoFocus
+            value={caption}
+            placeholder="Write a note or explanation..."
+            onChange={(e) => setCaption(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Escape") resetForm(); }}
+            rows={3}
+            className="w-full rounded-md border border-zinc-600 bg-zinc-800 px-2 py-1 text-[11px] text-zinc-100 placeholder:text-zinc-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 resize-y"
+          />
+          <div className="flex gap-1">
+            <button onClick={addMedia} disabled={!caption.trim()}
+              className="rounded-md bg-indigo-600 px-2 py-1 text-[10px] font-medium text-white hover:bg-indigo-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+              Add
+            </button>
+            <button onClick={resetForm} className="text-[10px] text-zinc-500 hover:text-zinc-300 transition-colors px-1">Cancel</button>
+          </div>
+        </div>
+      )}
+      {!adding && (
+        <div className="flex gap-1">
+          <button
+            onClick={() => setAdding("url")}
+            className="flex-1 rounded-md border border-dashed border-zinc-700 px-3 py-1.5 text-[11px] text-zinc-500 transition-colors hover:border-zinc-500 hover:text-zinc-300"
+          >
+            + Image / Video
+          </button>
+          <button
+            onClick={() => setAdding("text")}
+            className="flex-1 rounded-md border border-dashed border-zinc-700 px-3 py-1.5 text-[11px] text-zinc-500 transition-colors hover:border-zinc-500 hover:text-zinc-300"
+          >
+            + Note
+          </button>
+        </div>
       )}
     </div>
   );

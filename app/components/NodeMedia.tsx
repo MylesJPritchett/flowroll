@@ -33,10 +33,12 @@ export default function NodeMedia({ media }: NodeMediaProps) {
     <div className="mt-1.5 space-y-1.5">
       {media.map((item, i) => (
         <div key={i}>
-          {item.type === "youtube" ? (
-            <YouTubeThumbnail item={item} />
-          ) : (
-            <ImageThumbnail item={item} />
+          {item.type === "youtube" && <YouTubeThumbnail item={item} />}
+          {item.type === "image" && <ImageThumbnail item={item} />}
+          {item.type === "text" && item.caption && (
+            <div className="rounded bg-zinc-800/50 px-2 py-1.5">
+              <span className="text-[9px] text-zinc-300 whitespace-pre-wrap break-words">{item.caption}</span>
+            </div>
           )}
         </div>
       ))}
@@ -81,14 +83,14 @@ function YouTubeThumbnail({ item }: { item: MediaItem }) {
         </button>
       )}
       {(item.caption || item.start !== undefined) && (
-        <div className="flex items-center gap-1 mt-0.5">
-          {item.caption && (
-            <span className="text-[9px] text-zinc-400 truncate">{item.caption}</span>
-          )}
+        <div className="mt-0.5">
           {item.start !== undefined && (
-            <span className="text-[9px] text-zinc-500 shrink-0">
+            <span className="text-[9px] text-zinc-500">
               {formatTime(item.start)}{item.end !== undefined ? `–${formatTime(item.end)}` : ""}
             </span>
+          )}
+          {item.caption && (
+            <span className="text-[9px] text-zinc-400 whitespace-pre-wrap break-words block">{item.caption}</span>
           )}
         </div>
       )}
@@ -107,7 +109,7 @@ function ImageThumbnail({ item }: { item: MediaItem }) {
         draggable={false}
       />
       {item.caption && (
-        <span className="text-[9px] text-zinc-400 mt-0.5 block truncate">{item.caption}</span>
+        <span className="text-[9px] text-zinc-400 mt-0.5 block whitespace-pre-wrap break-words">{item.caption}</span>
       )}
     </div>
   );
