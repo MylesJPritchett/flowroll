@@ -14,8 +14,10 @@ export default function BJJNode({ data }: NodeProps) {
   const roleB = (d.roleB as string) ?? "B";
   const media = (d.media as MediaItem[]) ?? [];
 
+  const stateId = (d.state_id as string) ?? "";
   const warnings = (d.warnings as string[]) ?? [];
   const displayName = label || positionName;
+  const isSaved = !!stateId;
 
   const conditionsA = conditions.filter((c) => c.role === "A");
   const conditionsB = conditions.filter((c) => c.role === "B");
@@ -51,6 +53,17 @@ export default function BJJNode({ data }: NodeProps) {
       {/* State info (middle) */}
       <div className="px-3 py-2">
         <div className="flex items-center gap-1.5">
+          {isSaved ? (
+            <svg viewBox="0 0 16 16" className="w-3 h-3 shrink-0 text-green-400" fill="currentColor">
+              <title>Saved state</title>
+              <path d="M2 2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v12l-6-3-6 3V2z" />
+            </svg>
+          ) : (
+            <svg viewBox="0 0 16 16" className="w-3 h-3 shrink-0 text-zinc-500" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <title>Custom (not saved)</title>
+              <path d="M8 3.5v9M3.5 8h9" />
+            </svg>
+          )}
           <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
             {displayName}
           </span>
