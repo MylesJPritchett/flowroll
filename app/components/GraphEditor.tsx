@@ -396,11 +396,12 @@ interface GraphEditorProps {
   onFlowChange?: (flowId: string, nodes: GraphNode[], edges: GraphEdge[]) => void;
   onFlowSave?: (flowId: string, nodes: GraphNode[], edges: GraphEdge[]) => void;
   onInsertFlow?: (nodes: GraphNode[], edges: GraphEdge[]) => void;
+  onMergeFlows?: () => void;
   onTaxonomyChange?: () => void;
   onDeleteFlow?: (id: string) => void;
 }
 
-function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, flowGraphs, onNodesChange: emitNodes, onEdgesChange: emitEdges, onFlowChange, onFlowSave, onInsertFlow, onTaxonomyChange, onDeleteFlow }: GraphEditorProps) {
+function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, flowGraphs, onNodesChange: emitNodes, onEdgesChange: emitEdges, onFlowChange, onFlowSave, onInsertFlow, onMergeFlows, onTaxonomyChange, onDeleteFlow }: GraphEditorProps) {
   const { screenToFlowPosition } = useReactFlow();
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -857,6 +858,14 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, flowGraphs
         >
           + Submitted
         </button>
+        {!isViewingFlow && flowGraphs.length > 0 && onMergeFlows && (
+          <button
+            onClick={onMergeFlows}
+            className="rounded-lg border border-indigo-600/50 bg-zinc-800 px-3 py-2 text-sm font-medium text-indigo-300 shadow-md transition-colors hover:bg-indigo-950"
+          >
+            Merge All Flows
+          </button>
+        )}
         {isViewingFlow && activeFlow && onInsertFlow && (
           <button
             onClick={() => {

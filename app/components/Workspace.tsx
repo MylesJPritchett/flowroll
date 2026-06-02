@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { loadGraph, saveGraph, saveFlowGraph, loadGraphs, loadGraphById, deleteGraph } from "../actions/graph";
-import type { GraphNode, GraphEdge, GraphStateNode, GraphActionNode } from "@/lib/graph";
+import type { GraphNode, GraphEdge, GraphStateNode, GraphActionNode, GraphFinishNode } from "@/lib/graph";
 import { loadTaxonomy } from "../actions/taxonomy";
 import GraphEditor, { type FlowGraph } from "./GraphEditor";
 import ImportView from "./ImportView";
@@ -166,6 +166,172 @@ export default function Workspace() {
     }, 1500);
   }, []);
 
+  // --- Merge all flows into the main graph ---
+  const handleMergeFlows = useCallback(() => {
+    if (flowGraphs.length === 0) return;
+
+    // Collect all nodes and edges from all flows + main graph
+    const mergedNodes: GraphNode[] = [...nodes];
+    const mergedEdges: GraphEdge[] = [...edges];
+
+    // Track state nodes by identity (position_name + sorted conditions key)
+    function stateKey(n: GraphStateNode): string {
+      const condKey = [...n.conditions]
+        .sort((a, b) => `${a.groupId}:${a.role}:${a.value}`.localeCompare(`${b.groupId}:${b.role}:${b.value}`))
+        .map((c) => `${c.groupId}:${c.role}:${c.value}`)
+        .join("|");
+      return `${n.position_name}::${condKey}`;
+    }
+
+    function finishKey(n: GraphFinishNode): string {
+      return `finish::${n.label.toLowerCase()}`;
+    }
+
+    // Build index of existing nodes in the merged graph
+    const stateIndex = new Map<string, string>(); // stateKey -> node id
+    const finishIndex = new Map<string, string>(); // finishKey -> node id
+    for (const n of mergedNodes) {
+      if (n.type === "state") stateIndex.set(stateKey(n), n.id);
+      if (n.type === "finish") finishIndex.set(finishKey(n), n.id);
+    }
+
+    const existingEdgeKeys = new Set(
+      mergedEdges.map((e) => `${e.source_node_id}->${e.target_node_id}`),
+    );
+
+    let counter = Date.now();
+
+    for (const flow of flowGraphs) {
+      // Map from flow node id -> merged node id
+      const idMap = new Map<string, string>();
+
+      // First pass: map state/finish nodes (merge matching, add new)
+      for (const n of flow.nodes) {
+        if (n.type === "state") {
+          const key = stateKey(n);
+          const existingId = stateIndex.get(key);
+          if (existingId) {
+            // Merge into existing node
+            idMap.set(n.id, existingId);
+          } else {
+            // Add as new node with new ID
+            const newId = `${counter++}`;
+            idMap.set(n.id, newId);
+            const newNode: GraphStateNode = { ...n, id: newId };
+            mergedNodes.push(newNode);
+            stateIndex.set(key, newId);
+          }
+        } else if (n.type === "finish") {
+          const key = finishKey(n);
+          const existingId = finishIndex.get(key);
+          if (existingId) {
+            idMap.set(n.id, existingId);
+          } else {
+            const newId = `${counter++}`;
+            idMap.set(n.id, newId);
+            const newNode: GraphFinishNode = { ...n, id: newId };
+            mergedNodes.push(newNode);
+            finishIndex.set(key, newId);
+          }
+        }
+      }
+
+      // Second pass: action nodes always get added (they're edges between states)
+      for (const n of flow.nodes) {
+        if (n.type === "action") {
+          const newId = `${counter++}`;
+          idMap.set(n.id, newId);
+          const newNode: GraphActionNode = { ...n, id: newId };
+          mergedNodes.push(newNode);
+        }
+      }
+
+      // Add edges with remapped IDs, skip duplicates
+      for (const e of flow.edges) {
+        const sourceId = idMap.get(e.source_node_id) ?? e.source_node_id;
+        const targetId = idMap.get(e.target_node_id) ?? e.target_node_id;
+        const edgeKey = `${sourceId}->${targetId}`;
+        if (existingEdgeKeys.has(edgeKey)) continue;
+        existingEdgeKeys.add(edgeKey);
+        mergedEdges.push({
+          ...e,
+          id: `${counter++}`,
+          source_node_id: sourceId,
+          target_node_id: targetId,
+        });
+      }
+    }
+
+    // Auto-layout: spread out nodes that overlap
+    // Group by position and apply force-directed-ish spacing
+    const positionMap = new Map<string, GraphNode>();
+    for (const n of mergedNodes) positionMap.set(n.id, n);
+
+    // Simple layout: for newly added nodes without good positions,
+    // arrange them in a grid-like pattern based on graph depth
+    // (BFS from nodes with no incoming edges)
+    const incoming = new Map<string, string[]>();
+    const outgoing = new Map<string, string[]>();
+    for (const e of mergedEdges) {
+      if (!outgoing.has(e.source_node_id)) outgoing.set(e.source_node_id, []);
+      outgoing.get(e.source_node_id)!.push(e.target_node_id);
+      if (!incoming.has(e.target_node_id)) incoming.set(e.target_node_id, []);
+      incoming.get(e.target_node_id)!.push(e.source_node_id);
+    }
+
+    // Find roots (no incoming edges)
+    const roots = mergedNodes.filter((n) => !incoming.has(n.id) || incoming.get(n.id)!.length === 0);
+
+    // BFS to assign layers
+    const layer = new Map<string, number>();
+    const queue = roots.map((n) => ({ id: n.id, depth: 0 }));
+    const visited = new Set<string>();
+    while (queue.length > 0) {
+      const { id, depth } = queue.shift()!;
+      if (visited.has(id)) continue;
+      visited.add(id);
+      layer.set(id, depth);
+      for (const targetId of outgoing.get(id) ?? []) {
+        if (!visited.has(targetId)) {
+          queue.push({ id: targetId, depth: depth + 1 });
+        }
+      }
+    }
+
+    // Assign positions by layer
+    const layerNodes = new Map<number, string[]>();
+    for (const [id, d] of layer) {
+      if (!layerNodes.has(d)) layerNodes.set(d, []);
+      layerNodes.get(d)!.push(id);
+    }
+
+    const xSpacing = 250;
+    const ySpacing = 150;
+    for (const [d, nodeIds] of layerNodes) {
+      const totalHeight = (nodeIds.length - 1) * ySpacing;
+      nodeIds.forEach((id, i) => {
+        const n = positionMap.get(id);
+        if (n) {
+          n.position_x = d * xSpacing + 100;
+          n.position_y = i * ySpacing - totalHeight / 2 + 300;
+        }
+      });
+    }
+
+    // Handle unvisited nodes (disconnected)
+    let offsetY = 600;
+    for (const n of mergedNodes) {
+      if (!visited.has(n.id)) {
+        n.position_x = 100;
+        n.position_y = offsetY;
+        offsetY += 100;
+      }
+    }
+
+    setNodes(mergedNodes);
+    setEdges(mergedEdges);
+  }, [nodes, edges, flowGraphs]);
+
   if (loading || !taxonomy) {
     return (
       <div className="absolute inset-0 flex items-center justify-center">
@@ -240,6 +406,7 @@ export default function Workspace() {
             onFlowChange={handleFlowChange}
             onFlowSave={scheduleFlowSave}
             onInsertFlow={handleInsertFlow}
+            onMergeFlows={handleMergeFlows}
             onTaxonomyChange={refreshTaxonomy}
             onDeleteFlow={handleDeleteFlow}
           />
