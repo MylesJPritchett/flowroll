@@ -403,6 +403,68 @@ interface GraphEditorProps {
   onDeleteFlow?: (id: string) => void;
 }
 
+function NewFlowButton({ onCreate }: { onCreate: (name: string) => Promise<void> }) {
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState("");
+  const [creating, setCreating] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (editing) inputRef.current?.focus();
+  }, [editing]);
+
+  const submit = async () => {
+    if (!name.trim() || creating) return;
+    setCreating(true);
+    await onCreate(name.trim());
+    setName("");
+    setEditing(false);
+    setCreating(false);
+  };
+
+  if (!editing) {
+    return (
+      <button
+        onClick={() => setEditing(true)}
+        className="rounded-lg border border-zinc-600 bg-zinc-800 px-3 py-2 text-sm font-medium text-zinc-300 shadow-md transition-colors hover:bg-zinc-700"
+      >
+        + Flow
+      </button>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-1 rounded-lg border border-indigo-500 bg-zinc-800 px-2 py-1 shadow-md">
+      <input
+        ref={inputRef}
+        type="text"
+        value={name}
+        placeholder="Flow name..."
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") submit();
+          if (e.key === "Escape") { setEditing(false); setName(""); }
+        }}
+        disabled={creating}
+        className="w-32 bg-transparent text-sm text-zinc-100 placeholder:text-zinc-500 outline-none disabled:opacity-50"
+      />
+      <button
+        onClick={submit}
+        disabled={!name.trim() || creating}
+        className="rounded bg-indigo-600 px-2 py-1 text-xs font-medium text-white transition-colors hover:bg-indigo-500 disabled:opacity-40"
+      >
+        {creating ? "..." : "Create"}
+      </button>
+      <button
+        onClick={() => { setEditing(false); setName(""); }}
+        className="text-zinc-500 hover:text-zinc-300 text-sm px-0.5"
+      >
+        &times;
+      </button>
+    </div>
+  );
+}
+
 function InsertIntoButton({ flowNodes, flowEdges, flowGraphs, onInsert }: {
   flowNodes: GraphNode[];
   flowEdges: GraphEdge[];
@@ -894,21 +956,14 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, flowGraphs
           })}
         </select>
         {onCreateFlow && (
-          <button
-            onClick={async () => {
-              const name = prompt("Flow name:");
-              if (!name?.trim()) return;
-              const id = await onCreateFlow(name.trim());
-              if (id) {
-                setActiveFlowId(id);
-                setSelectedStateNode(null);
-                setSelectedActionNode(null);
-              }
-            }}
-            className="rounded-lg border border-zinc-600 bg-zinc-800 px-3 py-2 text-sm font-medium text-zinc-300 shadow-md transition-colors hover:bg-zinc-700"
-          >
-            + Flow
-          </button>
+          <NewFlowButton onCreate={async (name) => {
+            const id = await onCreateFlow(name);
+            if (id) {
+              setActiveFlowId(id);
+              setSelectedStateNode(null);
+              setSelectedActionNode(null);
+            }
+          }} />
         )}
         <button
           onClick={addStateNode}
