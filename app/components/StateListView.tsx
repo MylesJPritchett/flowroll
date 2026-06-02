@@ -75,6 +75,7 @@ function StateRow({ node, taxonomy, onUpdate, onDelete, onTaxonomyChange }: { no
               conditions: node.conditions,
               giNogi: node.giNogi,
               description: node.description,
+              media: node.media ?? [],
             }}
             taxonomy={taxonomy}
             onChange={(d) => onUpdate({ ...node, ...d })}
@@ -123,6 +124,7 @@ function ActionRow({ node, taxonomy, onUpdate, onDelete, onTaxonomyChange }: { n
               action_id: node.action_id,
               action_name: node.action_name,
               actor: node.actor,
+              media: node.media ?? [],
             }}
             taxonomy={taxonomy}
             roleLabels={{ roleA: "Role A", roleB: "Role B" }}

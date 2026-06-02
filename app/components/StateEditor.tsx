@@ -3,8 +3,9 @@
 import { useState, useEffect, useRef } from "react";
 import { getRoleLabels, getFilteredOptions, getAllowedOptionIds } from "@/lib/concepts";
 import type { StateCondition, Taxonomy } from "@/lib/concepts";
-import type { GiNogi } from "@/lib/graph";
+import type { GiNogi, MediaItem } from "@/lib/graph";
 import { addPosition, addState, addConditionGroup, addConditionOption } from "../actions/taxonomy";
+import MediaEditor from "./MediaEditor";
 
 export interface StateData {
   state_id: string;
@@ -13,6 +14,7 @@ export interface StateData {
   conditions: StateCondition[];
   giNogi: GiNogi;
   description: string;
+  media: MediaItem[];
 }
 
 interface StateEditorProps {
@@ -30,6 +32,7 @@ export default function StateEditor({ data, taxonomy, focusTitle, onChange, onTa
   const [conditions, setConditions] = useState<StateCondition[]>(data.conditions);
   const [giNogi, setGiNogi] = useState<GiNogi>(data.giNogi);
   const [description, setDescription] = useState(data.description);
+  const [media, setMedia] = useState<MediaItem[]>(data.media);
   const [showPositionSuggestions, setShowPositionSuggestions] = useState(false);
   const [addingConditionRole, setAddingConditionRole] = useState<"A" | "B" | null>(null);
   const [conditionQuery, setConditionQuery] = useState("");
@@ -49,6 +52,7 @@ export default function StateEditor({ data, taxonomy, focusTitle, onChange, onTa
     setConditions(data.conditions);
     setGiNogi(data.giNogi);
     setDescription(data.description);
+    setMedia(data.media);
     idRef.current = data.position_name;
   }, [data]);
 
@@ -67,6 +71,7 @@ export default function StateEditor({ data, taxonomy, focusTitle, onChange, onTa
       conditions: patch.conditions ?? conditions,
       giNogi: patch.giNogi ?? giNogi,
       description: patch.description ?? description,
+      media: patch.media ?? media,
     };
     onChange(next);
   };
@@ -514,6 +519,15 @@ export default function StateEditor({ data, taxonomy, focusTitle, onChange, onTa
           className="w-full rounded-md border border-zinc-600 bg-zinc-700 px-3 py-1.5 text-sm text-zinc-100 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
         />
       </div>
+
+      {/* Media */}
+      <MediaEditor
+        media={media}
+        onChange={(next) => {
+          setMedia(next);
+          emit({ media: next });
+        }}
+      />
     </div>
   );
 }

@@ -2,6 +2,16 @@ import type { StateCondition } from "@/lib/concepts";
 
 export type GiNogi = "gi" | "nogi" | "";
 
+// --- Media types ---
+
+export interface MediaItem {
+  type: "image" | "youtube";
+  url: string;
+  caption?: string;
+  start?: number; // YouTube start time in seconds
+  end?: number;   // YouTube end time in seconds
+}
+
 // --- Node types ---
 
 export interface GraphStateNode {
@@ -13,6 +23,7 @@ export interface GraphStateNode {
   conditions: StateCondition[];
   giNogi: GiNogi;
   description: string;
+  media: MediaItem[];
   position_x: number;
   position_y: number;
 }
@@ -23,6 +34,7 @@ export interface GraphActionNode {
   action_id: string;
   action_name: string;
   actor: "A" | "B";
+  media: MediaItem[];
   position_x: number;
   position_y: number;
 }
@@ -69,12 +81,12 @@ export function serializeNode(n: GraphNode, userId: string, graphId: string | nu
     position_y: n.position_y,
   };
   if (n.type === "action") {
-    return { ...base, label: n.action_name, description: "", metadata: { type: "action", action_id: n.action_id, actor: n.actor } };
+    return { ...base, label: n.action_name, description: "", metadata: { type: "action", action_id: n.action_id, actor: n.actor, ...(n.media.length > 0 ? { media: n.media } : {}) } };
   }
   if (n.type === "finish") {
     return { ...base, label: n.label, description: "", metadata: { type: "finish" } };
   }
-  return { ...base, label: n.position_name, description: n.description, metadata: { type: "state", state_id: n.state_id, label: n.label, conditions: n.conditions, giNogi: n.giNogi } };
+  return { ...base, label: n.position_name, description: n.description, metadata: { type: "state", state_id: n.state_id, label: n.label, conditions: n.conditions, giNogi: n.giNogi, ...(n.media.length > 0 ? { media: n.media } : {}) } };
 }
 
 export function serializeEdge(e: GraphEdge, userId: string, graphId: string | null) {
@@ -105,6 +117,7 @@ export function deserializeNodes(rows: Record<string, unknown>[]): GraphNode[] {
         action_id: (meta.action_id as string) ?? "",
         action_name: (row.label as string) ?? "",
         actor: (meta.actor as "A" | "B") ?? "A",
+        media: (meta.media as MediaItem[]) ?? [],
         position_x: row.position_x as number,
         position_y: row.position_y as number,
       };
@@ -125,6 +138,7 @@ export function deserializeNodes(rows: Record<string, unknown>[]): GraphNode[] {
       label: (meta.label as string) ?? "",
       position_name: (row.label as string) ?? "New State",
       description: (row.description as string) ?? "",
+      media: (meta.media as MediaItem[]) ?? [],
       position_x: row.position_x as number,
       position_y: row.position_y as number,
       conditions: (meta.conditions as StateCondition[]) ?? [],

@@ -4,13 +4,14 @@ import type { Node } from "@xyflow/react";
 import ActionEditor from "./ActionEditor";
 import type { ActionData } from "./ActionEditor";
 import type { Taxonomy } from "@/lib/concepts";
+import type { MediaItem } from "@/lib/graph";
 
 interface ActionNodeEditorProps {
   node: Node;
   taxonomy: Taxonomy;
   roleLabels: { roleA: string; roleB: string };
   position: { x: number; y: number };
-  onUpdate: (id: string, data: { action_id: string; action_name: string; actor: "A" | "B" }) => void;
+  onUpdate: (id: string, data: { action_id: string; action_name: string; actor: "A" | "B"; media: MediaItem[] }) => void;
   onDelete: (id: string) => void;
   onClose: () => void;
   onTaxonomyChange?: () => void;
@@ -22,6 +23,7 @@ export default function ActionNodeEditor({ node, taxonomy, roleLabels, position,
     action_id: (data.action_id as string) ?? "",
     action_name: (data.action_name as string) ?? "",
     actor: (data.actor as "A" | "B") ?? "A",
+    media: (data.media as MediaItem[]) ?? [],
   };
 
   return (

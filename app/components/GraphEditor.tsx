@@ -23,7 +23,7 @@ import ActionNode from "./ActionNode";
 import FinishNode from "./FinishNode";
 import NodeEditor from "./NodeEditor";
 import ActionNodeEditor from "./ActionNodeEditor";
-import type { GraphNode, GraphEdge, GraphStateNode, GraphActionNode, GraphFinishNode, GiNogi } from "@/lib/graph";
+import type { GraphNode, GraphEdge, GraphStateNode, GraphActionNode, GraphFinishNode, GiNogi, MediaItem } from "@/lib/graph";
 import { getRoleLabels, resolveConditionRole, computeActionEffects } from "@/lib/concepts";
 import type { StateCondition, Taxonomy } from "@/lib/concepts";
 
@@ -243,6 +243,7 @@ function toRFNodes(dbNodes: GraphNode[], dbEdges: GraphEdge[], taxonomy: Taxonom
           action_id: n.action_id,
           action_name: n.action_name,
           actor: n.actor,
+          media: n.media,
           warnings,
         },
       };
@@ -268,6 +269,7 @@ function toRFNodes(dbNodes: GraphNode[], dbEdges: GraphEdge[], taxonomy: Taxonom
         conditions: n.conditions,
         giNogi: n.giNogi,
         description: n.description,
+        media: n.media,
         roleA: roles.roleA,
         roleB: roles.roleB,
         warnings,
@@ -298,6 +300,7 @@ function fromRFNodes(nodes: Node[]): GraphNode[] {
         action_id: (d.action_id as string) ?? "",
         action_name: (d.action_name as string) ?? "",
         actor: (d.actor as "A" | "B") ?? "A",
+        media: (d.media as MediaItem[]) ?? [],
         position_x: n.position.x,
         position_y: n.position.y,
       };
@@ -318,6 +321,7 @@ function fromRFNodes(nodes: Node[]): GraphNode[] {
       label: (d.label as string) ?? "",
       position_name: (d.position_name as string) ?? "New State",
       description: (d.description as string) ?? "",
+      media: (d.media as MediaItem[]) ?? [],
       conditions: (d.conditions as StateCondition[]) ?? [],
       giNogi: (d.giNogi as GiNogi) ?? "",
       position_x: n.position.x,
@@ -461,7 +465,7 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, flowGraphs
           id: actionId,
           type: "action",
           position: midPosition,
-          data: { action_id: "", action_name: "", actor },
+          data: { action_id: "", action_name: "", actor, media: [] },
         };
         setNodes((nds) => [...nds, newAction]);
         setEdges((eds) => [
@@ -576,7 +580,7 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, flowGraphs
           id: nodeId,
           type: "action",
           position,
-          data: { action_id: "", action_name: "", actor },
+          data: { action_id: "", action_name: "", actor, media: [] },
         };
         setNodes((nds) => [...nds, newNode]);
         setEdges((eds) => [...eds, buildEdge(
@@ -598,7 +602,7 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, flowGraphs
       id,
       type: "state",
       position: { x: Math.random() * 400 + 100, y: Math.random() * 400 + 100 },
-      data: { state_id: "", label: "", position_name: "New State", conditions: [], giNogi: "", description: "" },
+      data: { state_id: "", label: "", position_name: "New State", conditions: [], giNogi: "", description: "", media: [] },
     };
     setNodes((nds) => [...nds, newNode]);
     setSelectedStateNode(newNode);
@@ -673,7 +677,7 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, flowGraphs
   }, []);
 
   const updateStateNode = useCallback(
-    (id: string, data: { state_id: string; label: string; position_name: string; conditions: StateCondition[]; giNogi: GiNogi; description: string }) => {
+    (id: string, data: { state_id: string; label: string; position_name: string; conditions: StateCondition[]; giNogi: GiNogi; description: string; media: unknown[] }) => {
       setNodes((nds) => nds.map((n) => (n.id === id ? { ...n, data: { ...n.data, ...data } } : n)));
       setSelectedStateNode((prev) => (prev && prev.id === id ? { ...prev, data: { ...prev.data, ...data } } : prev));
     },
@@ -681,7 +685,7 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, flowGraphs
   );
 
   const updateActionNode = useCallback(
-    (id: string, data: { action_id: string; action_name: string; actor: "A" | "B" }) => {
+    (id: string, data: { action_id: string; action_name: string; actor: "A" | "B"; media: unknown[] }) => {
       setNodes((nds) => {
         const updated = nds.map((n) => (n.id === id ? { ...n, data: { ...n.data, ...data } } : n));
 
@@ -735,7 +739,7 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, flowGraphs
           id: nodeId,
           type: "state",
           position: flowPosition,
-          data: { state_id: "", label: "", position_name: expectedName, conditions: expectedConditions, giNogi: expectedGiNogi, description: "" },
+          data: { state_id: "", label: "", position_name: expectedName, conditions: expectedConditions, giNogi: expectedGiNogi, description: "", media: [] },
         };
         setNodes((nds) => [...nds, newNode]);
         setEdges((eds) => [...eds, buildEdge(edgeId, actionNodeId, nodeId, actor, "source", targetHandle)]);
@@ -757,7 +761,7 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, flowGraphs
       id: nodeId,
       type: "state",
       position: flowPosition,
-      data: { state_id: "", label: "", position_name: "New State", conditions: [], giNogi: "", description: "" },
+      data: { state_id: "", label: "", position_name: "New State", conditions: [], giNogi: "", description: "", media: [] },
     };
     setNodes((nds) => [...nds, newNode]);
     setEdges((eds) => [...eds, buildEdge(edgeId, actionNodeId, nodeId, actor, "source", targetHandle)]);

@@ -76,6 +76,7 @@ export default function Workspace() {
       conditions: [],
       giNogi: "",
       description: "",
+      media: [],
       position_x: Math.random() * 400 + 100,
       position_y: Math.random() * 400 + 100,
     };
@@ -95,6 +96,7 @@ export default function Workspace() {
       action_id: "",
       action_name: "",
       actor: "A",
+      media: [],
       position_x: Math.random() * 400 + 100,
       position_y: Math.random() * 400 + 100,
     };

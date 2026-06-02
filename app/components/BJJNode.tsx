@@ -2,6 +2,8 @@
 
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import type { StateCondition } from "@/lib/concepts";
+import type { MediaItem } from "@/lib/graph";
+import NodeMedia from "./NodeMedia";
 
 export default function BJJNode({ data }: NodeProps) {
   const d = data as Record<string, unknown>;
@@ -10,16 +12,18 @@ export default function BJJNode({ data }: NodeProps) {
   const conditions = (d.conditions as StateCondition[]) ?? [];
   const roleA = (d.roleA as string) ?? "A";
   const roleB = (d.roleB as string) ?? "B";
+  const media = (d.media as MediaItem[]) ?? [];
 
   const warnings = (d.warnings as string[]) ?? [];
   const displayName = label || positionName;
 
   const conditionsA = conditions.filter((c) => c.role === "A");
   const conditionsB = conditions.filter((c) => c.role === "B");
+  const hasMedia = media.length > 0;
 
   return (
     <div
-      className={`rounded-lg border shadow-sm min-w-[140px] ${
+      className={`rounded-lg border shadow-sm ${hasMedia ? "w-[280px]" : "min-w-[140px]"} ${
         warnings.length > 0
           ? "border-amber-500/60 bg-amber-950/20 dark:border-amber-500/60 dark:bg-amber-950/20"
           : "border-zinc-300 bg-white dark:border-zinc-600 dark:bg-zinc-800"
@@ -57,6 +61,7 @@ export default function BJJNode({ data }: NodeProps) {
         {label && (
           <div className="text-[10px] text-zinc-400">{positionName}</div>
         )}
+        {hasMedia && <NodeMedia media={media} />}
       </div>
 
       {/* Role B section (bottom) */}

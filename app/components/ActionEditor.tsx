@@ -3,12 +3,15 @@
 import { useState, useEffect, useRef } from "react";
 import type { Taxonomy } from "@/lib/concepts";
 import type { Action } from "../actions/taxonomy";
+import type { MediaItem } from "@/lib/graph";
 import { addAction } from "../actions/taxonomy";
+import MediaEditor from "./MediaEditor";
 
 export interface ActionData {
   action_id: string;
   action_name: string;
   actor: "A" | "B";
+  media: MediaItem[];
 }
 
 interface ActionEditorProps {
@@ -23,6 +26,7 @@ export default function ActionEditor({ data, taxonomy, roleLabels, onChange, onT
   const [actionId, setActionId] = useState(data.action_id);
   const [actionName, setActionName] = useState(data.action_name);
   const [actor, setActor] = useState<"A" | "B">(data.actor);
+  const [media, setMedia] = useState<MediaItem[]>(data.media);
   const [search, setSearch] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -31,6 +35,7 @@ export default function ActionEditor({ data, taxonomy, roleLabels, onChange, onT
     setActionId(data.action_id);
     setActionName(data.action_name);
     setActor(data.actor);
+    setMedia(data.media);
     setSearch("");
   }, [data]);
 
@@ -49,7 +54,7 @@ export default function ActionEditor({ data, taxonomy, roleLabels, onChange, onT
     setActionName(action.name);
     setShowSuggestions(false);
     setSearch("");
-    onChange({ action_id: action.id, action_name: action.name, actor });
+    onChange({ action_id: action.id, action_name: action.name, actor, media });
   };
 
   return (
@@ -66,7 +71,7 @@ export default function ActionEditor({ data, taxonomy, roleLabels, onChange, onT
               onClick={() => {
                 setActionId("");
                 setActionName("");
-                onChange({ action_id: "", action_name: "", actor });
+                onChange({ action_id: "", action_name: "", actor, media });
               }}
               className="text-[10px] text-zinc-500 hover:text-zinc-300"
             >
@@ -135,7 +140,7 @@ export default function ActionEditor({ data, taxonomy, roleLabels, onChange, onT
                 key={role}
                 onClick={() => {
                   setActor(role);
-                  onChange({ action_id: actionId, action_name: actionName, actor: role });
+                  onChange({ action_id: actionId, action_name: actionName, actor: role, media });
                 }}
                 className={`flex-1 rounded-md px-2 py-1.5 text-xs font-medium text-white transition-colors ${
                   isA ? "bg-blue-600" : "bg-amber-600"
@@ -151,6 +156,15 @@ export default function ActionEditor({ data, taxonomy, roleLabels, onChange, onT
           })}
         </div>
       </div>
+
+      {/* Media */}
+      <MediaEditor
+        media={media}
+        onChange={(next) => {
+          setMedia(next);
+          onChange({ action_id: actionId, action_name: actionName, actor, media: next });
+        }}
+      />
     </div>
   );
 }

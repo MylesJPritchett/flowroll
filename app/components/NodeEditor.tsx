@@ -4,14 +4,14 @@ import type { Node } from "@xyflow/react";
 import StateEditor from "./StateEditor";
 import type { StateData } from "./StateEditor";
 import type { StateCondition, Taxonomy } from "@/lib/concepts";
-import type { GiNogi } from "@/lib/graph";
+import type { GiNogi, MediaItem } from "@/lib/graph";
 
 interface NodeEditorProps {
   node: Node;
   taxonomy: Taxonomy;
   focusTitle?: boolean;
   position: { x: number; y: number };
-  onUpdate: (id: string, data: { state_id: string; label: string; position_name: string; conditions: StateCondition[]; giNogi: GiNogi; description: string }) => void;
+  onUpdate: (id: string, data: { state_id: string; label: string; position_name: string; conditions: StateCondition[]; giNogi: GiNogi; description: string; media: MediaItem[] }) => void;
   onDelete: (id: string) => void;
   onClose: () => void;
   onTaxonomyChange?: () => void;
@@ -26,6 +26,7 @@ export default function NodeEditor({ node, taxonomy, focusTitle, position, onUpd
     conditions: (data.conditions as StateCondition[]) ?? [],
     giNogi: (data.giNogi as GiNogi) ?? "",
     description: (data.description as string) ?? "",
+    media: (data.media as MediaItem[]) ?? [],
   };
 
   return (
