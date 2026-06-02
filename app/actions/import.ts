@@ -234,6 +234,7 @@ export async function importNotation(input: string): Promise<ImportResult> {
       if (a.removes.length) updates.removes_conditions = await resolveConditionRefs(a.removes);
       if (a.giNogi) updates.gi_nogi = a.giNogi;
       if (a.description) updates.description = a.description;
+      if (a.media.length > 0) updates.media = a.media;
 
       if (Object.keys(updates).length > 0) {
         await supabase.from("actions").update(updates).eq("id", existing.id);
@@ -263,6 +264,7 @@ export async function importNotation(input: string): Promise<ImportResult> {
         forbidden_conditions: await resolveConditionRefs(a.forbids),
         adds_conditions: await resolveConditionRefs(a.adds),
         removes_conditions: await resolveConditionRefs(a.removes),
+        media: a.media,
       })
       .select()
       .single();
@@ -325,6 +327,7 @@ export async function importNotation(input: string): Promise<ImportResult> {
         description: s.description,
         conditions,
         gi_nogi: s.giNogi,
+        media: s.media,
         sort_order: sortOrder,
         created_by: userId,
         is_official: false,
@@ -491,6 +494,15 @@ export async function importNotation(input: string): Promise<ImportResult> {
           }
         }
 
+        // Collect media from parsed state, taxonomy state, or position
+        const stateMedia = matchedParsed?.media ?? [];
+        const taxStateRow = matchedTaxState ? [...statesByKey.values()].find((s) => s.id === matchedTaxState!.id) : undefined;
+        const nodeMedia = stateMedia.length > 0
+          ? stateMedia
+          : (taxStateRow as Record<string, unknown> | undefined)?.media
+            ? (taxStateRow as Record<string, unknown>).media
+            : (pos as Record<string, unknown> | undefined)?.media ?? [];
+
         const { error } = await supabase.from("graph_nodes").insert({
           id: nodeId,
           user_id: userId,
@@ -499,11 +511,13 @@ export async function importNotation(input: string): Promise<ImportResult> {
           description: matchedParsed?.description ?? "",
           position_x: idx * xSpacing + 100,
           position_y: 200,
-          metadata: { type: "state", state_id: matchedTaxState?.id ?? "", label: stateLabel, conditions: flowConditions, giNogi: matchedParsed?.giNogi ?? "" },
+          metadata: { type: "state", state_id: matchedTaxState?.id ?? "", label: stateLabel, conditions: flowConditions, giNogi: matchedParsed?.giNogi ?? "", ...((nodeMedia as unknown[]).length > 0 ? { media: nodeMedia } : {}) },
         });
         if (error) warnings.push(`Failed to create flow node "${step.label}": ${error.message}`);
       } else {
         const action = actionsByName.get(step.label.toLowerCase());
+        const actionMedia = action?.media ?? [];
+
         const { error } = await supabase.from("graph_nodes").insert({
           id: nodeId,
           user_id: userId,
@@ -512,7 +526,7 @@ export async function importNotation(input: string): Promise<ImportResult> {
           description: "",
           position_x: idx * xSpacing + 100,
           position_y: 200,
-          metadata: { type: "action", action_id: action?.id ?? "", actor: "A" },
+          metadata: { type: "action", action_id: action?.id ?? "", actor: "A", ...(actionMedia.length > 0 ? { media: actionMedia } : {}) },
         });
         if (error) warnings.push(`Failed to create flow node "${step.label}": ${error.message}`);
       }

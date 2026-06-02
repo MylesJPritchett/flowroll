@@ -2,8 +2,21 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import { loadTaxonomy } from "./taxonomy";
+import { fetchTranscript, formatTranscript } from "@/lib/youtube-transcript";
 
 const client = new Anthropic();
+
+function extractYouTubeId(url: string): string | null {
+  const patterns = [
+    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/,
+    /youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})/,
+  ];
+  for (const p of patterns) {
+    const m = url.match(p);
+    if (m) return m[1];
+  }
+  return null;
+}
 
 export async function translateToNotation(freeText: string): Promise<string> {
   const taxonomy = await loadTaxonomy();
@@ -24,6 +37,39 @@ export async function translateToNotation(freeText: string): Promise<string> {
     .join("\n");
 
   const actionsList = taxonomy.actions.map((a) => `  - ${a.name}`).join("\n");
+
+  // Check if input contains a YouTube URL — if so, fetch transcript
+  let inputText = freeText;
+  let videoUrl: string | null = null;
+  const urlMatch = freeText.match(/https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/)[a-zA-Z0-9_-]{11}[^\s]*/);
+  if (urlMatch && extractYouTubeId(urlMatch[0])) {
+    videoUrl = urlMatch[0];
+    try {
+      const segments = await fetchTranscript(videoUrl);
+      const transcript = formatTranscript(segments);
+      // Replace URL in input with the fetched transcript
+      const otherText = freeText.replace(urlMatch[0], "").trim();
+      inputText = otherText
+        ? `${otherText}\n\n--- Video Transcript (from ${videoUrl}) ---\n${transcript}`
+        : `--- Video Transcript (from ${videoUrl}) ---\n${transcript}`;
+    } catch (e) {
+      // If transcript fetch fails, pass through the URL as-is for context
+      inputText = freeText + `\n\n(Note: Could not fetch transcript from ${videoUrl}: ${e instanceof Error ? e.message : "unknown error"})`;
+    }
+  }
+
+  const mediaInstructions = videoUrl
+    ? `
+6. **Media** — since this input comes from a video, attach media references to actions and states:
+   For actions and states, add a media sub-line referencing the source video with timestamps:
+     media: ${videoUrl} START END "caption"
+   - START and END are timestamps in m:ss or h:mm:ss format marking where that technique/position is demonstrated
+   - "caption" is a brief description of what's shown at that timestamp
+   - Use the transcript timestamps [m:ss] to determine accurate start/end times
+   - Group related segments: if a technique is explained from 1:30 to 2:45, use those as start/end
+   - Every action and state that is discussed in the video should have a media line
+   - Omit media for items not actually demonstrated in the video`
+    : "";
 
   const systemPrompt = `You convert BJJ (Brazilian Jiu-Jitsu) notes, transcripts, or descriptions into a structured notation format. Output ONLY the notation — no explanation, no markdown fences.
 
@@ -93,6 +139,7 @@ ${actionsList}
    - End with "Submitted" for submission finishes
    - Use existing position and action names from the taxonomy when they match
    - State names in flows should match either a position name or a "Display Name" from a state definition
+${mediaInstructions}
 
 ## Important:
 - Reuse existing position, condition, and action names EXACTLY (case-sensitive) when they match
@@ -104,12 +151,12 @@ ${actionsList}
 
   const response = await client.messages.create({
     model: "claude-sonnet-4-20250514",
-    max_tokens: 4096,
+    max_tokens: 8192,
     system: systemPrompt,
     messages: [
       {
         role: "user",
-        content: freeText,
+        content: inputText,
       },
     ],
   });

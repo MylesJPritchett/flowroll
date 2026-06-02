@@ -1,9 +1,25 @@
 "use client";
 
 import { useState } from "react";
-import type { GraphStateNode, GraphActionNode } from "@/lib/graph";
+import type { GraphStateNode, GraphActionNode, MediaItem } from "@/lib/graph";
 import type { Taxonomy } from "@/lib/concepts";
 import { getRoleLabels } from "@/lib/concepts";
+
+function resolveStateMedia(node: GraphStateNode, taxonomy: Taxonomy): MediaItem[] {
+  if (node.media?.length > 0) return node.media;
+  if (node.state_id) {
+    const state = taxonomy.states.find((s) => s.id === node.state_id);
+    if (state?.media?.length) return state.media;
+  }
+  const pos = taxonomy.positions.find((p) => p.name === node.position_name);
+  return pos?.media ?? [];
+}
+
+function resolveActionMedia(node: GraphActionNode, taxonomy: Taxonomy): MediaItem[] {
+  if (node.media?.length > 0) return node.media;
+  const action = taxonomy.actions.find((a) => a.id === node.action_id);
+  return action?.media ?? [];
+}
 import StateEditor from "./StateEditor";
 import ActionEditor from "./ActionEditor";
 
@@ -75,7 +91,7 @@ function StateRow({ node, taxonomy, onUpdate, onDelete, onTaxonomyChange }: { no
               conditions: node.conditions,
               giNogi: node.giNogi,
               description: node.description,
-              media: node.media ?? [],
+              media: resolveStateMedia(node, taxonomy),
             }}
             taxonomy={taxonomy}
             onChange={(d) => onUpdate({ ...node, ...d })}
@@ -124,7 +140,7 @@ function ActionRow({ node, taxonomy, onUpdate, onDelete, onTaxonomyChange }: { n
               action_id: node.action_id,
               action_name: node.action_name,
               actor: node.actor,
-              media: node.media ?? [],
+              media: resolveActionMedia(node, taxonomy),
             }}
             taxonomy={taxonomy}
             roleLabels={{ roleA: "Role A", roleB: "Role B" }}

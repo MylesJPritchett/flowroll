@@ -226,6 +226,25 @@ function getActionWarnings(node: GraphActionNode, sourceState: GraphStateNode | 
   return warnings;
 }
 
+/** Resolve media for a node: use node's own media if present, otherwise fall back to taxonomy */
+function resolveActionMedia(node: GraphActionNode, taxonomy: Taxonomy): MediaItem[] {
+  if (node.media.length > 0) return node.media;
+  const action = taxonomy.actions.find((a) => a.id === node.action_id);
+  return action?.media ?? [];
+}
+
+function resolveStateMedia(node: GraphStateNode, taxonomy: Taxonomy): MediaItem[] {
+  if (node.media.length > 0) return node.media;
+  // Try state media
+  if (node.state_id) {
+    const state = taxonomy.states.find((s) => s.id === node.state_id);
+    if (state?.media?.length) return state.media;
+  }
+  // Fall back to position media
+  const pos = taxonomy.positions.find((p) => p.name === node.position_name);
+  return pos?.media ?? [];
+}
+
 function toRFNodes(dbNodes: GraphNode[], dbEdges: GraphEdge[], taxonomy: Taxonomy): Node[] {
   const nodesById = new Map(dbNodes.map((n) => [n.id, n]));
   return dbNodes.map((n) => {
@@ -243,7 +262,7 @@ function toRFNodes(dbNodes: GraphNode[], dbEdges: GraphEdge[], taxonomy: Taxonom
           action_id: n.action_id,
           action_name: n.action_name,
           actor: n.actor,
-          media: n.media,
+          media: resolveActionMedia(n, taxonomy),
           warnings,
         },
       };
@@ -269,7 +288,7 @@ function toRFNodes(dbNodes: GraphNode[], dbEdges: GraphEdge[], taxonomy: Taxonom
         conditions: n.conditions,
         giNogi: n.giNogi,
         description: n.description,
-        media: n.media,
+        media: resolveStateMedia(n, taxonomy),
         roleA: roles.roleA,
         roleB: roles.roleB,
         warnings,

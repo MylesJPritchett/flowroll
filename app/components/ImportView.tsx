@@ -94,12 +94,15 @@ export default function ImportView({ onImported }: { onImported: () => void }) {
             {/* Free text input */}
             <div className="space-y-2">
               <label className="text-sm font-medium text-zinc-300">
-                Paste your notes, transcript, or description
+                Paste notes, a YouTube URL, or both
               </label>
+              <p className="text-xs text-zinc-500">
+                Paste a YouTube URL and we&apos;ll fetch the transcript automatically, map techniques to timestamps, and attach video clips to each action and state.
+              </p>
               <textarea
                 value={freeText}
                 onChange={(e) => setFreeText(e.target.value)}
-                placeholder={"From closed guard bottom, if I have an underhook on the near arm, I can hip escape to get to open guard with a knee shield. If they have heavy pressure from top, I need to frame first before escaping..."}
+                placeholder={"https://youtube.com/watch?v=...\n\nor paste notes like:\n\nFrom closed guard bottom, if I have an underhook on the near arm, I can hip escape to get to open guard with a knee shield..."}
                 rows={8}
                 className="w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 outline-none focus:border-indigo-500 resize-y"
               />
@@ -152,7 +155,7 @@ position: Closed Guard (Bottom / Top)
 condition: Near Arm > underhook, overhook, whizzer
 condition: Grip > collar grip [gi], sleeve grip [gi], wrist grip
 
-# Actions (with optional description and condition effects)
+# Actions (with optional description, condition effects, and media)
 action: Hip Escape
   description: Create angle by shrimping away from opponent
   gi/nogi: both
@@ -160,6 +163,7 @@ action: Hip Escape
   forbids: Head Control = crossface (opponent)
   adds: Legs = knee shield (actor)
   removes: Near Arm = overhook (opponent)
+  media: https://youtube.com/watch?v=xxx 1:30 2:45 "Hip escape demo"
 
 # States (position + conditions snapshot, "as" for display name)
 state: Closed Guard

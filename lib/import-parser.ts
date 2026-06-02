@@ -44,6 +44,14 @@ export interface ParsedConditionRef {
   role: "actor" | "opponent";
 }
 
+export interface ParsedMedia {
+  type: "image" | "youtube";
+  url: string;
+  caption?: string;
+  start?: number; // seconds
+  end?: number;   // seconds
+}
+
 export interface ParsedAction {
   name: string;
   description: string;
@@ -52,6 +60,7 @@ export interface ParsedAction {
   forbids: ParsedConditionRef[];
   adds: ParsedConditionRef[];
   removes: ParsedConditionRef[];
+  media: ParsedMedia[];
 }
 
 export interface ParsedStateCondition {
@@ -66,6 +75,7 @@ export interface ParsedState {
   roleB: ParsedStateCondition[];
   giNogi: "" | "gi" | "nogi";
   description: string;
+  media: ParsedMedia[];
 }
 
 export interface ParsedFlowStep {
@@ -119,6 +129,75 @@ function parseStateConditions(text: string): ParsedStateCondition[] {
     }
   }
   return conditions;
+}
+
+/** Parse a time string like "1:30" or "1:02:30" or "90" into seconds */
+function parseTimeToSeconds(s: string): number | undefined {
+  s = s.trim();
+  if (!s) return undefined;
+  if (s.includes(":")) {
+    const parts = s.split(":").map(Number);
+    if (parts.length === 2) return (parts[0] ?? 0) * 60 + (parts[1] ?? 0);
+    if (parts.length === 3) return (parts[0] ?? 0) * 3600 + (parts[1] ?? 0) * 60 + (parts[2] ?? 0);
+  }
+  const n = Number(s);
+  return isNaN(n) ? undefined : n;
+}
+
+/**
+ * Parse a media line like:
+ *   media: https://youtube.com/watch?v=xxx 1:30 2:45 "Hip escape demo"
+ *   media: https://example.com/image.jpg "Caption text"
+ */
+function parseMediaLine(text: string): ParsedMedia | null {
+  text = text.trim();
+  if (!text) return null;
+
+  // Extract URL (first non-space token)
+  const spaceIdx = text.indexOf(" ");
+  if (spaceIdx === -1) {
+    // URL only
+    const isYt = /youtube\.com|youtu\.be/.test(text);
+    return { type: isYt ? "youtube" : "image", url: text };
+  }
+
+  const url = text.slice(0, spaceIdx);
+  const rest = text.slice(spaceIdx + 1).trim();
+  const isYt = /youtube\.com|youtu\.be/.test(url);
+
+  if (isYt) {
+    // Try to parse: START END "caption" or START END or "caption"
+    const match = rest.match(/^(\d[\d:]*)\s+(\d[\d:]*)\s*(?:"(.+)")?$/);
+    if (match) {
+      return {
+        type: "youtube",
+        url,
+        start: parseTimeToSeconds(match[1]),
+        end: parseTimeToSeconds(match[2]),
+        ...(match[3] ? { caption: match[3] } : {}),
+      };
+    }
+    // Just START "caption"
+    const match2 = rest.match(/^(\d[\d:]*)\s*(?:"(.+)")?$/);
+    if (match2) {
+      return {
+        type: "youtube",
+        url,
+        start: parseTimeToSeconds(match2[1]),
+        ...(match2[2] ? { caption: match2[2] } : {}),
+      };
+    }
+    // Just "caption"
+    const captionMatch = rest.match(/^"(.+)"$/);
+    if (captionMatch) {
+      return { type: "youtube", url, caption: captionMatch[1] };
+    }
+    return { type: "youtube", url };
+  }
+
+  // Image URL
+  const captionMatch = rest.match(/^"(.+)"$/);
+  return { type: "image", url, ...(captionMatch ? { caption: captionMatch[1] } : {}) };
 }
 
 function parseGiNogi(text: string): "" | "gi" | "nogi" {
@@ -206,6 +285,7 @@ export function parseNotation(input: string): ParseResult {
         forbids: [],
         adds: [],
         removes: [],
+        media: [],
       };
       i++;
       // Read indented sub-lines
@@ -225,6 +305,9 @@ export function parseNotation(input: string): ParseResult {
           action.adds = parseConditionRefs(trimmed.slice("adds:".length));
         } else if (trimmed.startsWith("removes:")) {
           action.removes = parseConditionRefs(trimmed.slice("removes:".length));
+        } else if (trimmed.startsWith("media:")) {
+          const m = parseMediaLine(trimmed.slice("media:".length));
+          if (m) action.media.push(m);
         }
         i++;
       }
@@ -246,6 +329,7 @@ export function parseNotation(input: string): ParseResult {
         roleB: [],
         giNogi: "",
         description: "",
+        media: [],
       };
       i++;
       while (i < lines.length) {
@@ -267,6 +351,9 @@ export function parseNotation(input: string): ParseResult {
           state.giNogi = parseGiNogi(trimmed.slice("gi/nogi:".length));
         } else if (trimmed.startsWith("description:")) {
           state.description = trimmed.slice("description:".length).trim();
+        } else if (trimmed.startsWith("media:")) {
+          const m = parseMediaLine(trimmed.slice("media:".length));
+          if (m) state.media.push(m);
         }
         i++;
       }
