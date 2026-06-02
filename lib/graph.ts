@@ -62,10 +62,13 @@ export interface GraphEdge {
 
 // --- Graph (container) type ---
 
+export type GraphSource = "user" | "import" | "merge";
+
 export interface Graph {
   id: string;
   name: string;
   description: string;
+  source: GraphSource;
   created_at: string;
   updated_at: string;
 }

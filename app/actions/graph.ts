@@ -3,7 +3,7 @@
 import { auth } from "@/auth";
 import { createSupabaseServer } from "@/lib/supabase";
 import { serializeNode, serializeEdge, deserializeNodes, deserializeEdges } from "@/lib/graph";
-import type { GraphNode, GraphEdge, Graph } from "@/lib/graph";
+import type { GraphNode, GraphEdge, Graph, GraphSource } from "@/lib/graph";
 
 // --- Shared save logic ---
 
@@ -155,14 +155,14 @@ export async function loadGraphById(graphId: string): Promise<{
   };
 }
 
-export async function createGraph(name: string, description = ""): Promise<Graph | null> {
+export async function createGraph(name: string, description = "", source: GraphSource = "user"): Promise<Graph | null> {
   const session = await auth();
   if (!session?.user?.email) return null;
 
   const supabase = createSupabaseServer();
   const { data, error } = await supabase
     .from("graphs")
-    .insert({ user_id: session.user.email, name, description })
+    .insert({ user_id: session.user.email, name, description, source })
     .select()
     .single();
 

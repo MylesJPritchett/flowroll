@@ -23,7 +23,7 @@ import ActionNode from "./ActionNode";
 import FinishNode from "./FinishNode";
 import NodeEditor from "./NodeEditor";
 import ActionNodeEditor from "./ActionNodeEditor";
-import type { GraphNode, GraphEdge, GraphStateNode, GraphActionNode, GraphFinishNode, GiNogi, MediaItem } from "@/lib/graph";
+import type { GraphNode, GraphEdge, GraphStateNode, GraphActionNode, GraphFinishNode, GiNogi, MediaItem, GraphSource } from "@/lib/graph";
 import { getRoleLabels, resolveConditionRole, computeActionEffects } from "@/lib/concepts";
 import type { StateCondition, Taxonomy } from "@/lib/concepts";
 
@@ -382,6 +382,7 @@ function buildEdge(id: string, source: string, target: string, actor: "A" | "B",
 export interface FlowGraph {
   id: string;
   name: string;
+  source: GraphSource;
   nodes: GraphNode[];
   edges: GraphEdge[];
 }
@@ -395,13 +396,57 @@ interface GraphEditorProps {
   onEdgesChange: (edges: GraphEdge[]) => void;
   onFlowChange?: (flowId: string, nodes: GraphNode[], edges: GraphEdge[]) => void;
   onFlowSave?: (flowId: string, nodes: GraphNode[], edges: GraphEdge[]) => void;
-  onInsertFlow?: (nodes: GraphNode[], edges: GraphEdge[]) => void;
+  onInsertFlow?: (flowNodes: GraphNode[], flowEdges: GraphEdge[], targetFlowId: string | null) => void;
+  onCreateFlow?: (name: string, source?: GraphSource) => Promise<string | null>;
   onMergeFlows?: () => void;
   onTaxonomyChange?: () => void;
   onDeleteFlow?: (id: string) => void;
 }
 
-function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, flowGraphs, onNodesChange: emitNodes, onEdgesChange: emitEdges, onFlowChange, onFlowSave, onInsertFlow, onMergeFlows, onTaxonomyChange, onDeleteFlow }: GraphEditorProps) {
+function InsertIntoButton({ flowNodes, flowEdges, flowGraphs, onInsert }: {
+  flowNodes: GraphNode[];
+  flowEdges: GraphEdge[];
+  flowGraphs: FlowGraph[];
+  onInsert: (targetFlowId: string | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  if (flowNodes.length === 0) return null;
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen(!open)}
+        className="rounded-lg bg-green-600 px-3 py-2 text-sm font-medium text-white shadow-md transition-colors hover:bg-green-500"
+      >
+        Insert into...
+      </button>
+      {open && (
+        <div className="absolute top-full left-0 mt-1 rounded-lg border border-zinc-600 bg-zinc-800 shadow-lg overflow-hidden min-w-[180px] z-20">
+          <button
+            onClick={() => { onInsert(null); setOpen(false); }}
+            className="w-full text-left px-3 py-2 text-sm text-zinc-100 hover:bg-zinc-700 transition-colors"
+          >
+            {"\u25C8"} My Graph
+          </button>
+          {flowGraphs.map((f) => {
+            const icon = f.source === "import" ? "\u2B07" : "\u270E";
+            return (
+              <button
+                key={f.id}
+                onClick={() => { onInsert(f.id); setOpen(false); }}
+                className="w-full text-left px-3 py-2 text-sm text-zinc-100 hover:bg-zinc-700 transition-colors"
+              >
+                {icon} {f.name}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, flowGraphs, onNodesChange: emitNodes, onEdgesChange: emitEdges, onFlowChange, onFlowSave, onInsertFlow, onCreateFlow, onMergeFlows, onTaxonomyChange, onDeleteFlow }: GraphEditorProps) {
   const { screenToFlowPosition } = useReactFlow();
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -410,10 +455,12 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, flowGraphs
   const [activeFlowId, setActiveFlowId] = useState<string | null>(null);
   const syncing = useRef(false);
 
+  const mergeFlow = flowGraphs.find((f) => f.source === "merge");
   const isViewingFlow = activeFlowId !== null;
 
-  // Get active data source
-  const activeFlow = activeFlowId ? flowGraphs.find((f) => f.id === activeFlowId) : null;
+  // Get active data source — "__merged__" maps to the merge flow
+  const resolvedFlowId = activeFlowId === "__merged__" ? mergeFlow?.id ?? null : activeFlowId;
+  const activeFlow = resolvedFlowId ? flowGraphs.find((f) => f.id === resolvedFlowId) : null;
   const displayNodes = activeFlow ? activeFlow.nodes : dbNodes;
   const displayEdges = activeFlow ? activeFlow.edges : dbEdges;
 
@@ -435,15 +482,15 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, flowGraphs
     emitTimeout.current = setTimeout(() => {
       const graphNodes = fromRFNodes(nodes);
       const graphEdges = fromRFEdges(edges);
-      if (isViewingFlow && activeFlowId) {
-        onFlowChange?.(activeFlowId, graphNodes, graphEdges);
-        onFlowSave?.(activeFlowId, graphNodes, graphEdges);
+      if (isViewingFlow && resolvedFlowId) {
+        onFlowChange?.(resolvedFlowId, graphNodes, graphEdges);
+        onFlowSave?.(resolvedFlowId, graphNodes, graphEdges);
       } else {
         emitNodes(graphNodes);
         emitEdges(graphEdges);
       }
     }, 100);
-  }, [nodes, edges, emitNodes, emitEdges, isViewingFlow, activeFlowId, onFlowChange, onFlowSave]);
+  }, [nodes, edges, emitNodes, emitEdges, isViewingFlow, resolvedFlowId, onFlowChange, onFlowSave]);
 
   const applyActionEffects = useCallback(
     (actionNodeId: string, targetNodeId: string) => {
@@ -830,57 +877,74 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, flowGraphs
       </ReactFlow>
 
       <div className="absolute left-4 top-4 z-10 flex items-center gap-2">
-        {flowGraphs.length > 0 && (
-          <select
-            value={activeFlowId ?? ""}
-            onChange={(e) => {
-              setActiveFlowId(e.target.value || null);
-              setSelectedStateNode(null);
-              setSelectedActionNode(null);
+        <select
+          value={activeFlowId === "__merged__" ? "__merged__" : (resolvedFlowId ?? "")}
+          onChange={(e) => {
+            setActiveFlowId(e.target.value || null);
+            setSelectedStateNode(null);
+            setSelectedActionNode(null);
+          }}
+          className="rounded-lg border border-zinc-600 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-indigo-500 shadow-md max-w-[250px] truncate"
+        >
+          <option value="">{"\u25C8"} My Graph</option>
+          <option value="__merged__">{"\u2B2A"} Auto Merged</option>
+          {flowGraphs.filter((f) => f.source !== "merge").map((f) => {
+            const icon = f.source === "import" ? "\u2B07" : "\u270E";
+            return <option key={f.id} value={f.id}>{icon} {f.name}</option>;
+          })}
+        </select>
+        {onCreateFlow && (
+          <button
+            onClick={async () => {
+              const name = prompt("Flow name:");
+              if (!name?.trim()) return;
+              const id = await onCreateFlow(name.trim());
+              if (id) {
+                setActiveFlowId(id);
+                setSelectedStateNode(null);
+                setSelectedActionNode(null);
+              }
             }}
-            className="rounded-lg border border-zinc-600 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-indigo-500 shadow-md max-w-[250px] truncate"
+            className="rounded-lg border border-zinc-600 bg-zinc-800 px-3 py-2 text-sm font-medium text-zinc-300 shadow-md transition-colors hover:bg-zinc-700"
           >
-            <option value="">My Graph</option>
-            {flowGraphs.map((f) => (
-              <option key={f.id} value={f.id}>{f.name}</option>
-            ))}
-          </select>
+            + Flow
+          </button>
         )}
         <button
           onClick={addStateNode}
           className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-md transition-colors hover:bg-indigo-500"
         >
-          + Add State
+          + State
         </button>
         <button
           onClick={addFinishNode}
           className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white shadow-md transition-colors hover:bg-red-500"
         >
-          + Submitted
+          + Finish
         </button>
-        {!isViewingFlow && flowGraphs.length > 0 && onMergeFlows && (
+        {activeFlowId === "__merged__" && onMergeFlows && (
           <button
             onClick={onMergeFlows}
             className="rounded-lg border border-indigo-600/50 bg-zinc-800 px-3 py-2 text-sm font-medium text-indigo-300 shadow-md transition-colors hover:bg-indigo-950"
           >
-            Merge All Flows
+            Re-merge
           </button>
         )}
         {isViewingFlow && activeFlow && onInsertFlow && (
-          <button
-            onClick={() => {
-              onInsertFlow(activeFlow.nodes, activeFlow.edges);
-              setActiveFlowId(null);
+          <InsertIntoButton
+            flowNodes={activeFlow.nodes}
+            flowEdges={activeFlow.edges}
+            flowGraphs={flowGraphs.filter((f) => f.id !== resolvedFlowId && f.source !== "merge")}
+            onInsert={(targetId) => {
+              onInsertFlow(activeFlow.nodes, activeFlow.edges, targetId);
             }}
-            className="rounded-lg bg-green-600 px-3 py-2 text-sm font-medium text-white shadow-md transition-colors hover:bg-green-500"
-          >
-            Insert into My Graph
-          </button>
+          />
         )}
-        {isViewingFlow && onDeleteFlow && (
+        {isViewingFlow && activeFlow?.source !== "merge" && onDeleteFlow && (
           <button
             onClick={() => {
-              onDeleteFlow(activeFlowId!);
+              if (!confirm(`Delete flow "${activeFlow?.name}"?`)) return;
+              onDeleteFlow(resolvedFlowId!);
               setActiveFlowId(null);
             }}
             className="rounded-lg border border-red-600/50 bg-zinc-800 px-3 py-2 text-sm font-medium text-red-400 shadow-md transition-colors hover:bg-red-950"

@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { loadGraph, saveGraph, saveFlowGraph, loadGraphs, loadGraphById, deleteGraph } from "../actions/graph";
-import type { GraphNode, GraphEdge, GraphStateNode, GraphActionNode, GraphFinishNode } from "@/lib/graph";
+import { loadGraph, saveGraph, saveFlowGraph, loadGraphs, loadGraphById, createGraph, deleteGraph } from "../actions/graph";
+import type { GraphNode, GraphEdge, GraphStateNode, GraphActionNode, GraphFinishNode, GraphSource } from "@/lib/graph";
 import { loadTaxonomy } from "../actions/taxonomy";
 import GraphEditor, { type FlowGraph } from "./GraphEditor";
 import ImportView from "./ImportView";
@@ -29,7 +29,7 @@ export default function Workspace() {
     for (const g of graphs) {
       const data = await loadGraphById(g.id);
       if (data) {
-        loaded.push({ id: g.id, name: data.graph.name, nodes: data.nodes, edges: data.edges });
+        loaded.push({ id: g.id, name: data.graph.name, source: data.graph.source, nodes: data.nodes, edges: data.edges });
       }
     }
     setFlowGraphs(loaded);
@@ -118,15 +118,28 @@ export default function Workspace() {
     });
   }, []);
 
+  const handleCreateFlow = useCallback(async (name: string, source: GraphSource = "user"): Promise<string | null> => {
+    const graph = await createGraph(name, "", source);
+    if (!graph) return null;
+    const flow: FlowGraph = { id: graph.id, name: graph.name, source: graph.source, nodes: [], edges: [] };
+    setFlowGraphs((prev) => [...prev, flow]);
+    return graph.id;
+  }, []);
+
   const handleDeleteFlow = useCallback(async (id: string) => {
     await deleteGraph(id);
     setFlowGraphs((prev) => prev.filter((f) => f.id !== id));
   }, []);
 
-  const handleInsertFlow = useCallback((flowNodes: GraphNode[], flowEdges: GraphEdge[]) => {
+  const handleInsertFlow = useCallback((flowNodes: GraphNode[], flowEdges: GraphEdge[], targetFlowId: string | null) => {
     const now = Date.now();
     const idMap = new Map(flowNodes.map((n, i) => [n.id, `${now}-${i}`]));
-    const maxX = nodes.reduce((max, n) => Math.max(max, n.position_x), 0);
+
+    const targetNodes = targetFlowId
+      ? (flowGraphs.find((f) => f.id === targetFlowId)?.nodes ?? [])
+      : nodes;
+
+    const maxX = targetNodes.reduce((max, n) => Math.max(max, n.position_x), 0);
     const offsetX = maxX + 300;
 
     const newNodes: GraphNode[] = flowNodes.map((n) => ({
@@ -139,9 +152,26 @@ export default function Workspace() {
       target_node_id: idMap.get(e.target_node_id) ?? e.target_node_id,
     }));
 
-    setNodes((prev) => [...prev, ...newNodes]);
-    setEdges((prev) => [...prev, ...newEdges]);
-  }, [nodes]);
+    if (targetFlowId) {
+      // Insert into a named flow
+      setFlowGraphs((prev) => prev.map((f) =>
+        f.id === targetFlowId
+          ? { ...f, nodes: [...f.nodes, ...newNodes], edges: [...f.edges, ...newEdges] }
+          : f,
+      ));
+      // Also persist
+      const target = flowGraphs.find((f) => f.id === targetFlowId);
+      if (target) {
+        const allNodes = [...target.nodes, ...newNodes];
+        const allEdges = [...target.edges, ...newEdges];
+        saveFlowGraph(targetFlowId, allNodes, allEdges);
+      }
+    } else {
+      // Insert into My Graph
+      setNodes((prev) => [...prev, ...newNodes]);
+      setEdges((prev) => [...prev, ...newEdges]);
+    }
+  }, [nodes, flowGraphs]);
 
   const handleFlowChange = useCallback((flowId: string, newNodes: GraphNode[], newEdges: GraphEdge[]) => {
     setFlowGraphs((prev) => prev.map((f) =>
@@ -166,11 +196,12 @@ export default function Workspace() {
     }, 1500);
   }, []);
 
-  // --- Merge all flows into the main graph ---
-  const handleMergeFlows = useCallback(() => {
-    if (flowGraphs.length === 0) return;
+  // --- Merge all flows into the Auto Merged flow ---
+  const handleMergeFlows = useCallback(async () => {
+    // Collect all non-merge flows + main graph
+    const sourceFlows = flowGraphs.filter((f) => f.source !== "merge");
+    if (sourceFlows.length === 0 && nodes.length === 0) return;
 
-    // Collect all nodes and edges from all flows + main graph
     const mergedNodes: GraphNode[] = [...nodes];
     const mergedEdges: GraphEdge[] = [...edges];
 
@@ -201,7 +232,7 @@ export default function Workspace() {
 
     let counter = Date.now();
 
-    for (const flow of flowGraphs) {
+    for (const flow of sourceFlows) {
       // Map from flow node id -> merged node id
       const idMap = new Map<string, string>();
 
@@ -328,8 +359,22 @@ export default function Workspace() {
       }
     }
 
-    setNodes(mergedNodes);
-    setEdges(mergedEdges);
+    // Find or create the merge flow
+    let mergeFlow = flowGraphs.find((f) => f.source === "merge");
+    if (!mergeFlow) {
+      const graph = await createGraph("Auto Merged", "", "merge");
+      if (!graph) return;
+      mergeFlow = { id: graph.id, name: graph.name, source: graph.source, nodes: [], edges: [] };
+      setFlowGraphs((prev) => [...prev, mergeFlow!]);
+    }
+
+    // Update merge flow with merged data
+    setFlowGraphs((prev) => prev.map((f) =>
+      f.id === mergeFlow!.id
+        ? { ...f, nodes: mergedNodes, edges: mergedEdges }
+        : f,
+    ));
+    await saveFlowGraph(mergeFlow.id, mergedNodes, mergedEdges);
   }, [nodes, edges, flowGraphs]);
 
   if (loading || !taxonomy) {
@@ -406,6 +451,7 @@ export default function Workspace() {
             onFlowChange={handleFlowChange}
             onFlowSave={scheduleFlowSave}
             onInsertFlow={handleInsertFlow}
+            onCreateFlow={handleCreateFlow}
             onMergeFlows={handleMergeFlows}
             onTaxonomyChange={refreshTaxonomy}
             onDeleteFlow={handleDeleteFlow}

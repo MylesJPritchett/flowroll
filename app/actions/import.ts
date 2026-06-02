@@ -423,7 +423,7 @@ export async function importNotation(input: string): Promise<ImportResult> {
     // Create a graph container
     const { data: graph, error: graphError } = await supabase
       .from("graphs")
-      .insert({ user_id: userId, name: flowName })
+      .insert({ user_id: userId, name: flowName, source: "import" })
       .select()
       .single();
 
