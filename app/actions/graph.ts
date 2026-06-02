@@ -65,7 +65,7 @@ export async function loadGraph(): Promise<{
       .is("graph_id", null),
     supabase
       .from("graph_edges")
-      .select("id, source_node_id, target_node_id")
+      .select("id, source_node_id, target_node_id, metadata")
       .eq("user_id", userId)
       .is("graph_id", null),
   ]);
@@ -141,7 +141,7 @@ export async function loadGraphById(graphId: string): Promise<{
       .eq("graph_id", graphId),
     supabase
       .from("graph_edges")
-      .select("id, source_node_id, target_node_id")
+      .select("id, source_node_id, target_node_id, metadata")
       .eq("user_id", userId)
       .eq("graph_id", graphId),
   ]);

@@ -378,7 +378,7 @@ interface GraphEditorProps {
 }
 
 function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, flowGraphs, onNodesChange: emitNodes, onEdgesChange: emitEdges, onFlowChange, onFlowSave, onInsertFlow, onTaxonomyChange, onDeleteFlow }: GraphEditorProps) {
-  const { screenToFlowPosition, fitView } = useReactFlow();
+  const { screenToFlowPosition } = useReactFlow();
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedStateNode, setSelectedStateNode] = useState<Node | null>(null);
@@ -400,7 +400,6 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, flowGraphs
     setEdges(toRFEdges(displayEdges));
     setTimeout(() => {
       syncing.current = false;
-      fitView({ duration: 200 });
     }, 50);
   }, [displayNodes, displayEdges, setNodes, setEdges]);
 
@@ -799,7 +798,6 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, flowGraphs
         onPaneClick={onPaneClick}
         nodeTypes={nodeTypes}
         defaultEdgeOptions={{ selectable: true }}
-        fitView
         proOptions={{ hideAttribution: true }}
       >
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} />
