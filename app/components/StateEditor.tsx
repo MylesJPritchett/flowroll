@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { getRoleLabels, getFilteredOptions, getAllowedOptionIds } from "@/lib/concepts";
 import type { StateCondition, Taxonomy } from "@/lib/concepts";
 import type { GiNogi } from "@/lib/graph";
-import { addPosition, addState } from "../actions/taxonomy";
+import { addPosition, addState, addConditionGroup, addConditionOption } from "../actions/taxonomy";
 
 export interface StateData {
   state_id: string;
@@ -31,7 +31,13 @@ export default function StateEditor({ data, taxonomy, focusTitle, onChange, onTa
   const [giNogi, setGiNogi] = useState<GiNogi>(data.giNogi);
   const [description, setDescription] = useState(data.description);
   const [showPositionSuggestions, setShowPositionSuggestions] = useState(false);
-  const [expandedRole, setExpandedRole] = useState<"A" | "B" | null>(null);
+  const [addingConditionRole, setAddingConditionRole] = useState<"A" | "B" | null>(null);
+  const [conditionQuery, setConditionQuery] = useState("");
+  const [highlightedIndex, setHighlightedIndex] = useState(0);
+  const [creatingValue, setCreatingValue] = useState<string | null>(null);
+  const [newGroupName, setNewGroupName] = useState("");
+  const [isCreating, setIsCreating] = useState(false);
+  const conditionInputRef = useRef<HTMLInputElement>(null);
   const titleRef = useRef<HTMLInputElement>(null);
   const idRef = useRef(data.position_name);
 
@@ -233,7 +239,22 @@ export default function StateEditor({ data, taxonomy, focusTitle, onChange, onTa
             const roleLabel = role === "A" ? roles.roleA : roles.roleB;
             const activeConditions = conditions.filter((c) => c.role === role);
             const allowed = getAllowedOptionIds(positionName, role, taxonomy);
-            const isExpanded = expandedRole === role;
+            const isAdding = addingConditionRole === role;
+
+            // Build autocomplete suggestions from taxonomy
+            const suggestions = taxonomy.conditionGroups.flatMap((group) => {
+              const opts = getFilteredOptions(group, giNogi, allowed);
+              return opts
+                .filter((opt) => !activeConditions.some((c) => c.groupId === group.id && c.value === opt.label))
+                .map((opt) => ({ groupId: group.id, groupName: group.name, value: opt.label }));
+            });
+
+            const query = conditionQuery.toLowerCase();
+            const filtered = query
+              ? suggestions.filter(
+                  (s) => s.value.toLowerCase().includes(query) || s.groupName.toLowerCase().includes(query),
+                )
+              : suggestions;
 
             return (
               <div key={role}>
@@ -255,43 +276,206 @@ export default function StateEditor({ data, taxonomy, focusTitle, onChange, onTa
                     })}
                   </div>
                   <button
-                    onClick={() => setExpandedRole(isExpanded ? null : role)}
+                    onClick={() => {
+                      if (isAdding) {
+                        setAddingConditionRole(null);
+                        setConditionQuery("");
+                      } else {
+                        setAddingConditionRole(role);
+                        setConditionQuery("");
+                        setHighlightedIndex(0);
+                        setTimeout(() => conditionInputRef.current?.focus(), 0);
+                      }
+                    }}
                     className="rounded-full w-5 h-5 flex items-center justify-center text-[10px] font-bold bg-zinc-700 text-zinc-300 hover:bg-indigo-500 hover:text-white transition-colors"
                     title="Add condition"
                   >
-                    {isExpanded ? "-" : "+"}
+                    {isAdding ? "×" : "+"}
                   </button>
                 </div>
-                {isExpanded && (
-                  <div className="ml-1 mb-2 space-y-1.5 rounded border border-zinc-700 bg-zinc-900 p-2">
-                    {taxonomy.conditionGroups.map((group) => {
-                      const opts = getFilteredOptions(group, giNogi, allowed);
-                      if (opts.length === 0) return null;
-                      const activeValue = getActiveValue(group.id, role);
-                      return (
-                        <div key={group.id} className="flex items-center gap-1">
-                          <span className="w-20 shrink-0 text-[9px] font-medium text-zinc-500">{group.name}</span>
-                          <div className="flex flex-wrap gap-0.5">
-                            {opts.map((opt) => {
-                              const active = activeValue === opt.label;
-                              return (
-                                <button
-                                  key={opt.label}
-                                  onClick={() => toggleCondition(group.id, opt.label, role)}
-                                  className={`rounded-full px-1.5 py-0.5 text-[9px] font-medium transition-colors ${
-                                    active
-                                      ? "bg-indigo-500 text-white"
-                                      : "bg-indigo-500/15 text-indigo-300 hover:bg-indigo-500/30"
-                                  }`}
-                                >
-                                  {opt.label}
-                                </button>
-                              );
-                            })}
-                          </div>
+                {isAdding && (
+                  <div className="ml-1 mb-2 relative">
+                    {creatingValue === null ? (
+                      <>
+                        <input
+                          ref={conditionInputRef}
+                          type="text"
+                          value={conditionQuery}
+                          placeholder="Type to search or create conditions…"
+                          onChange={(e) => {
+                            setConditionQuery(e.target.value);
+                            setHighlightedIndex(0);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === "ArrowDown") {
+                              e.preventDefault();
+                              // +1 for the create option at the bottom
+                              const max = query ? filtered.length : filtered.length - 1;
+                              setHighlightedIndex((i) => Math.min(i + 1, max));
+                            } else if (e.key === "ArrowUp") {
+                              e.preventDefault();
+                              setHighlightedIndex((i) => Math.max(i - 1, 0));
+                            } else if (e.key === "Enter") {
+                              e.preventDefault();
+                              if (query && highlightedIndex === filtered.length) {
+                                // Create option selected
+                                setCreatingValue(conditionQuery.trim());
+                                setNewGroupName("");
+                              } else if (filtered.length > 0) {
+                                const pick = filtered[highlightedIndex];
+                                if (pick) {
+                                  toggleCondition(pick.groupId, pick.value, role);
+                                  setConditionQuery("");
+                                  setHighlightedIndex(0);
+                                }
+                              }
+                            } else if (e.key === "Escape") {
+                              setAddingConditionRole(null);
+                              setConditionQuery("");
+                            }
+                          }}
+                          className="w-full rounded-md border border-zinc-600 bg-zinc-800 px-2 py-1 text-[11px] text-zinc-100 placeholder:text-zinc-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                        />
+                        <div className="mt-1 max-h-44 overflow-y-auto rounded border border-zinc-700 bg-zinc-900">
+                          {filtered.map((s, i) => (
+                            <button
+                              key={`${s.groupId}-${s.value}`}
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={() => {
+                                toggleCondition(s.groupId, s.value, role);
+                                setConditionQuery("");
+                                setHighlightedIndex(0);
+                                conditionInputRef.current?.focus();
+                              }}
+                              className={`w-full text-left px-2 py-1 text-[10px] flex items-center gap-1.5 transition-colors ${
+                                i === highlightedIndex
+                                  ? "bg-indigo-600 text-white"
+                                  : "text-zinc-300 hover:bg-zinc-800"
+                              }`}
+                            >
+                              <span className="text-zinc-500 shrink-0">{s.groupName}</span>
+                              <span className="font-medium">{s.value}</span>
+                            </button>
+                          ))}
+                          {query && (
+                            <button
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={() => {
+                                setCreatingValue(conditionQuery.trim());
+                                setNewGroupName("");
+                              }}
+                              className={`w-full text-left px-2 py-1 text-[10px] flex items-center gap-1.5 transition-colors border-t border-zinc-800 ${
+                                highlightedIndex === filtered.length
+                                  ? "bg-green-700 text-white"
+                                  : "text-green-400 hover:bg-zinc-800"
+                              }`}
+                            >
+                              <span className="font-medium">+ Create &quot;{conditionQuery.trim()}&quot;</span>
+                            </button>
+                          )}
+                          {!query && filtered.length === 0 && (
+                            <div className="px-2 py-1.5 text-[10px] text-zinc-500">
+                              Type to search or create a condition
+                            </div>
+                          )}
                         </div>
-                      );
-                    })}
+                      </>
+                    ) : (
+                      <div className="rounded border border-zinc-700 bg-zinc-900 p-2 space-y-2">
+                        <div className="text-[10px] text-zinc-400">
+                          Create <span className="font-semibold text-zinc-200">&quot;{creatingValue}&quot;</span> in group:
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {taxonomy.conditionGroups.map((g) => (
+                            <button
+                              key={g.id}
+                              disabled={isCreating}
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={async () => {
+                                setIsCreating(true);
+                                const created = await addConditionOption(g.id, creatingValue, false);
+                                setIsCreating(false);
+                                if (created) {
+                                  onTaxonomyChange?.();
+                                  toggleCondition(g.id, creatingValue, role);
+                                  setCreatingValue(null);
+                                  setConditionQuery("");
+                                  setHighlightedIndex(0);
+                                }
+                              }}
+                              className="rounded-full px-2 py-0.5 text-[9px] font-medium bg-zinc-700 text-zinc-300 hover:bg-indigo-600 hover:text-white transition-colors disabled:opacity-50"
+                            >
+                              {g.name}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="text"
+                            autoFocus
+                            value={newGroupName}
+                            placeholder="Or new group name…"
+                            onChange={(e) => setNewGroupName(e.target.value)}
+                            onKeyDown={async (e) => {
+                              if (e.key === "Enter" && newGroupName.trim()) {
+                                e.preventDefault();
+                                setIsCreating(true);
+                                const group = await addConditionGroup(newGroupName.trim());
+                                if (group) {
+                                  const created = await addConditionOption(group.id, creatingValue, false);
+                                  setIsCreating(false);
+                                  if (created) {
+                                    onTaxonomyChange?.();
+                                    toggleCondition(group.id, creatingValue, role);
+                                    setCreatingValue(null);
+                                    setConditionQuery("");
+                                    setHighlightedIndex(0);
+                                  }
+                                } else {
+                                  setIsCreating(false);
+                                }
+                              } else if (e.key === "Escape") {
+                                setCreatingValue(null);
+                              }
+                            }}
+                            disabled={isCreating}
+                            className="flex-1 rounded-md border border-zinc-600 bg-zinc-800 px-2 py-1 text-[10px] text-zinc-100 placeholder:text-zinc-500 outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 disabled:opacity-50"
+                          />
+                          {newGroupName.trim() && (
+                            <button
+                              disabled={isCreating}
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={async () => {
+                                setIsCreating(true);
+                                const group = await addConditionGroup(newGroupName.trim());
+                                if (group) {
+                                  const created = await addConditionOption(group.id, creatingValue, false);
+                                  setIsCreating(false);
+                                  if (created) {
+                                    onTaxonomyChange?.();
+                                    toggleCondition(group.id, creatingValue, role);
+                                    setCreatingValue(null);
+                                    setConditionQuery("");
+                                    setHighlightedIndex(0);
+                                  }
+                                } else {
+                                  setIsCreating(false);
+                                }
+                              }}
+                              className="rounded-md bg-green-600 px-2 py-1 text-[10px] font-medium text-white hover:bg-green-500 transition-colors disabled:opacity-50"
+                            >
+                              Create
+                            </button>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => setCreatingValue(null)}
+                          className="text-[9px] text-zinc-500 hover:text-zinc-300 transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
