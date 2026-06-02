@@ -514,6 +514,7 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, flowGraphs
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedStateNode, setSelectedStateNode] = useState<Node | null>(null);
   const [selectedActionNode, setSelectedActionNode] = useState<Node | null>(null);
+  const [selectedFinishNode, setSelectedFinishNode] = useState<Node | null>(null);
   const [activeFlowId, setActiveFlowId] = useState<string | null>(null);
   const syncing = useRef(false);
 
@@ -756,13 +757,15 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, flowGraphs
     if (node.type === "action") {
       setSelectedActionNode(node);
       setSelectedStateNode(null);
+      setSelectedFinishNode(null);
     } else if (node.type === "finish") {
-      // Finish nodes are not editable, just deselect others
+      setSelectedFinishNode(node);
       setSelectedActionNode(null);
       setSelectedStateNode(null);
     } else {
       setSelectedStateNode(node);
       setSelectedActionNode(null);
+      setSelectedFinishNode(null);
     }
     setFocusTitle(false);
     setEditorPos(getRelativePos(e));
@@ -801,6 +804,7 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, flowGraphs
     }
     setSelectedStateNode(null);
     setSelectedActionNode(null);
+    setSelectedFinishNode(null);
     setPendingSuggestion(null);
     setSelectedEdge(null);
   }, []);
@@ -1036,6 +1040,26 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, flowGraphs
             className="w-full rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-red-500"
           >
             Delete Connection
+          </button>
+        </div>
+      )}
+
+      {selectedFinishNode && (
+        <div
+          style={{ left: editorPos.x, top: editorPos.y }}
+          className="absolute z-10 rounded-lg border border-zinc-700 bg-zinc-800 p-3 shadow-lg"
+        >
+          <div className="mb-2 flex items-center justify-between gap-4">
+            <span className="text-xs font-medium text-zinc-300">
+              {(selectedFinishNode.data as Record<string, unknown>).label as string || "Submitted"}
+            </span>
+            <button onClick={() => setSelectedFinishNode(null)} className="text-zinc-400 hover:text-zinc-200">&times;</button>
+          </div>
+          <button
+            onClick={() => { deleteNode(selectedFinishNode.id); setSelectedFinishNode(null); }}
+            className="w-full rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-red-500"
+          >
+            Delete
           </button>
         </div>
       )}
