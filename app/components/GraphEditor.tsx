@@ -275,7 +275,8 @@ function toRFNodes(dbNodes: GraphNode[], dbEdges: GraphEdge[], taxonomy: Taxonom
         data: { label: n.label },
       };
     }
-    const roles = getRoleLabels(n.position_name, taxonomy.positions);
+    const pos = taxonomy.positions.find((p) => p.name === n.position_name);
+    const roles = pos ? { roleA: pos.role_a, roleB: pos.role_b } : { roleA: "A", roleB: "B" };
     const warnings = getStateWarnings(n, taxonomy);
     return {
       id: n.id,
@@ -289,6 +290,7 @@ function toRFNodes(dbNodes: GraphNode[], dbEdges: GraphEdge[], taxonomy: Taxonom
         giNogi: n.giNogi,
         description: n.description,
         media: resolveStateMedia(n, taxonomy),
+        positionInDb: !!pos,
         roleA: roles.roleA,
         roleB: roles.roleB,
         warnings,

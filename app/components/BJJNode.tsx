@@ -15,9 +15,16 @@ export default function BJJNode({ data }: NodeProps) {
   const media = (d.media as MediaItem[]) ?? [];
 
   const stateId = (d.state_id as string) ?? "";
+  const positionInDb = (d.positionInDb as boolean) ?? false;
   const warnings = (d.warnings as string[]) ?? [];
   const displayName = label || positionName;
-  const isSaved = !!stateId;
+
+  // Three states:
+  // - saved: named state saved in DB (has state_id) → bookmark
+  // - known: bare position from DB, no custom label or conditions → check
+  // - unsaved: everything else (new position, or known position with unsaved customizations) → plus
+  const hasCustomizations = !!label || conditions.length > 0;
+  const status: "saved" | "known" | "unsaved" = stateId ? "saved" : (positionInDb && !hasCustomizations) ? "known" : "unsaved";
 
   const conditionsA = conditions.filter((c) => c.role === "A");
   const conditionsB = conditions.filter((c) => c.role === "B");
@@ -53,14 +60,19 @@ export default function BJJNode({ data }: NodeProps) {
       {/* State info (middle) */}
       <div className="px-3 py-2">
         <div className="flex items-center gap-1.5">
-          {isSaved ? (
+          {status === "saved" ? (
             <svg viewBox="0 0 16 16" className="w-3 h-3 shrink-0 text-green-400" fill="currentColor">
-              <title>Saved state</title>
+              <title>Saved named state</title>
               <path d="M2 2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v12l-6-3-6 3V2z" />
+            </svg>
+          ) : status === "known" ? (
+            <svg viewBox="0 0 16 16" className="w-3 h-3 shrink-0 text-blue-400" fill="none" stroke="currentColor" strokeWidth="2">
+              <title>Position in database</title>
+              <path d="M3.5 8.5l3 3 6-6.5" />
             </svg>
           ) : (
             <svg viewBox="0 0 16 16" className="w-3 h-3 shrink-0 text-zinc-500" fill="none" stroke="currentColor" strokeWidth="1.5">
-              <title>Custom (not saved)</title>
+              <title>Unsaved</title>
               <path d="M8 3.5v9M3.5 8h9" />
             </svg>
           )}
