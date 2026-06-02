@@ -54,7 +54,10 @@ export default function ActionEditor({ data, taxonomy, roleLabels, onChange, onT
     setActionName(action.name);
     setShowSuggestions(false);
     setSearch("");
-    onChange({ action_id: action.id, action_name: action.name, actor, media });
+    // Inherit action's taxonomy media if node has none
+    const inherited = media.length === 0 && action.media.length > 0 ? action.media : media;
+    if (inherited !== media) setMedia(inherited);
+    onChange({ action_id: action.id, action_name: action.name, actor, media: inherited });
   };
 
   return (

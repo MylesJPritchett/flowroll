@@ -28,6 +28,8 @@ import {
   type ConditionRef,
 } from "../actions/taxonomy";
 import type { ConditionRefRole, State } from "@/lib/concepts";
+import type { MediaItem } from "@/lib/graph";
+import MediaEditor from "./MediaEditor";
 
 function OfficialBadge() {
   return <span className="text-green-400 text-[10px]" title="Official">&#10003;</span>;
@@ -452,7 +454,7 @@ function PositionRowWithReqs({
   states: State[];
   editable: boolean;
   mode: "database" | "admin";
-  onUpdate: (updates: { name?: string; description?: string; role_a?: string; role_b?: string }) => void;
+  onUpdate: (updates: { name?: string; description?: string; role_a?: string; role_b?: string; media?: MediaItem[] }) => void;
   onDelete: () => void;
   onToggleOfficial: () => void;
   onToggleRequirement: (optionId: string, role: "A" | "B", required: boolean) => void;
@@ -510,6 +512,13 @@ function PositionRowWithReqs({
               placeholder="Notes about this position..."
               rows={2}
               className={`w-full rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-100 outline-none focus:border-indigo-500 resize-y ${!editable ? "opacity-50" : ""}`}
+            />
+          </div>
+          <div className="mb-3">
+            <div className="text-[10px] font-medium text-zinc-400 mb-1">Media</div>
+            <MediaEditor
+              media={position.media}
+              onChange={(next) => onUpdate({ media: next })}
             />
           </div>
           <div className="mb-3">
@@ -749,6 +758,13 @@ function ActionRowWithPrereqs({
               placeholder="Notes about this action..."
               rows={2}
               className={`w-full rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-100 outline-none focus:border-indigo-500 resize-y ${!editable ? "opacity-50" : ""}`}
+            />
+          </div>
+          <div>
+            <div className="text-[10px] font-medium text-zinc-400 mb-1">Media</div>
+            <MediaEditor
+              media={action.media}
+              onChange={(next) => onUpdate({ media: next })}
             />
           </div>
           {renderConditionPicker(

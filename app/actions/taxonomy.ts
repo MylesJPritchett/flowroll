@@ -2,6 +2,7 @@
 
 import { createSupabaseServer, getUserId } from "@/lib/supabase";
 import { isAdmin } from "./admin";
+import type { MediaItem } from "@/lib/graph";
 
 // --- Types ---
 
@@ -18,6 +19,7 @@ export interface Position extends OwnershipFields {
   role_a: string;
   role_b: string;
   sort_order: number;
+  media: MediaItem[];
 }
 
 export interface ConditionOption extends OwnershipFields {
@@ -53,6 +55,7 @@ export interface Action extends OwnershipFields {
   adds_conditions: ConditionRef[];
   removes_conditions: ConditionRef[];
   sort_order: number;
+  media: MediaItem[];
 }
 
 export interface PositionRequirement {
@@ -76,6 +79,7 @@ export interface State extends OwnershipFields {
   conditions: StateConditionEntry[];
   gi_nogi: "" | "gi" | "nogi";
   sort_order: number;
+  media: MediaItem[];
 }
 
 // --- Load ---
@@ -195,7 +199,7 @@ export async function addPosition(name: string, roleA: string, roleB: string, de
   return data;
 }
 
-export async function updatePosition(id: string, updates: { name?: string; description?: string; role_a?: string; role_b?: string; is_public?: boolean }): Promise<boolean> {
+export async function updatePosition(id: string, updates: { name?: string; description?: string; role_a?: string; role_b?: string; is_public?: boolean; media?: MediaItem[] }): Promise<boolean> {
   const supabase = createSupabaseServer();
   const { error } = await supabase.from("positions").update(updates).eq("id", id);
   if (error) { console.error("Failed to update position:", error); return false; }
@@ -331,7 +335,7 @@ export async function addAction(name: string, description: string, giNogi: "" | 
   return data;
 }
 
-export async function updateAction(id: string, updates: { name?: string; description?: string; gi_nogi?: "" | "gi" | "nogi"; is_public?: boolean; required_conditions?: ConditionRef[]; forbidden_conditions?: ConditionRef[]; adds_conditions?: ConditionRef[]; removes_conditions?: ConditionRef[] }): Promise<boolean> {
+export async function updateAction(id: string, updates: { name?: string; description?: string; gi_nogi?: "" | "gi" | "nogi"; is_public?: boolean; required_conditions?: ConditionRef[]; forbidden_conditions?: ConditionRef[]; adds_conditions?: ConditionRef[]; removes_conditions?: ConditionRef[]; media?: MediaItem[] }): Promise<boolean> {
   const supabase = createSupabaseServer();
   const { error } = await supabase.from("actions").update(updates).eq("id", id);
   if (error) { console.error("Failed to update action:", error); return false; }
@@ -347,7 +351,7 @@ export async function deleteAction(id: string): Promise<boolean> {
 
 // --- States CRUD ---
 
-export async function addState(positionId: string, name: string, description: string, conditions: StateConditionEntry[], giNogi: "" | "gi" | "nogi"): Promise<State | null> {
+export async function addState(positionId: string, name: string, description: string, conditions: StateConditionEntry[], giNogi: "" | "gi" | "nogi", media: MediaItem[] = []): Promise<State | null> {
   const userId = await getUserId();
   const supabase = createSupabaseServer();
   const { data: maxRow } = await supabase.from("states").select("sort_order").eq("position_id", positionId).order("sort_order", { ascending: false }).limit(1).single();
@@ -355,7 +359,7 @@ export async function addState(positionId: string, name: string, description: st
 
   const { data, error } = await supabase
     .from("states")
-    .insert({ position_id: positionId, name, description, conditions, gi_nogi: giNogi, sort_order: sortOrder, created_by: userId, is_official: false, is_public: true })
+    .insert({ position_id: positionId, name, description, conditions, gi_nogi: giNogi, media, sort_order: sortOrder, created_by: userId, is_official: false, is_public: true })
     .select()
     .single();
 
@@ -363,7 +367,7 @@ export async function addState(positionId: string, name: string, description: st
   return data;
 }
 
-export async function updateState(id: string, updates: { name?: string; description?: string; conditions?: StateConditionEntry[]; gi_nogi?: "" | "gi" | "nogi"; is_public?: boolean }): Promise<boolean> {
+export async function updateState(id: string, updates: { name?: string; description?: string; conditions?: StateConditionEntry[]; gi_nogi?: "" | "gi" | "nogi"; is_public?: boolean; media?: MediaItem[] }): Promise<boolean> {
   const supabase = createSupabaseServer();
   const { error } = await supabase.from("states").update(updates).eq("id", id);
   if (error) { console.error("Failed to update state:", error); return false; }

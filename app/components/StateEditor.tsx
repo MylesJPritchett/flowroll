@@ -146,7 +146,10 @@ export default function StateEditor({ data, taxonomy, focusTitle, onChange, onTa
                 onClick={() => {
                   setPositionName(p.name);
                   setShowPositionSuggestions(false);
-                  emit({ position_name: p.name });
+                  // Inherit position media if node has none
+                  const inherited = media.length === 0 && p.media.length > 0 ? p.media : media;
+                  if (inherited !== media) setMedia(inherited);
+                  emit({ position_name: p.name, media: inherited });
                 }}
                 className="rounded-full bg-zinc-600/30 px-2 py-0.5 text-[10px] font-medium text-zinc-300 hover:bg-zinc-600/50 transition-colors"
               >
@@ -185,7 +188,9 @@ export default function StateEditor({ data, taxonomy, focusTitle, onChange, onTa
                     setConditions(s.conditions);
                     setGiNogi(s.gi_nogi);
                     setDescription(s.description);
-                    emit({ state_id: s.id, label: s.name, conditions: s.conditions, giNogi: s.gi_nogi, description: s.description });
+                    const stateMedia = s.media.length > 0 ? s.media : (pos?.media ?? []);
+                    setMedia(stateMedia);
+                    emit({ state_id: s.id, label: s.name, conditions: s.conditions, giNogi: s.gi_nogi, description: s.description, media: stateMedia });
                   }}
                   className={`rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors ${
                     stateId === s.id
@@ -493,7 +498,7 @@ export default function StateEditor({ data, taxonomy, focusTitle, onChange, onTa
       {pos && label.trim() && !stateId && (
         <button
           onClick={async () => {
-            const created = await addState(pos.id, label.trim(), description, conditions, giNogi);
+            const created = await addState(pos.id, label.trim(), description, conditions, giNogi, media);
             if (created) {
               setStateId(created.id);
               emit({ state_id: created.id });
