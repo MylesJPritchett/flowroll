@@ -17,7 +17,7 @@ export default function Workspace() {
   const [edges, setEdges] = useState<GraphEdge[]>([]);
   const [taxonomy, setTaxonomy] = useState<Taxonomy | null>(null);
   const [flowGraphs, setFlowGraphs] = useState<FlowGraph[]>([]);
-  const [view, setView] = useState<View>("list");
+  const [view, setView] = useState<View>("graph");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
