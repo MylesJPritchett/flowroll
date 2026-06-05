@@ -286,11 +286,53 @@ export async function importNotation(input: string): Promise<ImportResult> {
   }
 
   for (const s of parsed.states) {
-    // Resolve position
-    const pos = positionsByName.get(s.positionName.toLowerCase());
+    // Resolve position, creating if it doesn't exist
+    let pos = positionsByName.get(s.positionName.toLowerCase());
     if (!pos) {
-      warnings.push(`Unknown position "${s.positionName}" for state`);
-      continue;
+      const { data: maxRow } = await supabase
+        .from("positions")
+        .select("sort_order")
+        .order("sort_order", { ascending: false })
+        .limit(1)
+        .single();
+      const sortOrder = (maxRow?.sort_order ?? -1) + 1;
+
+      const { data, error } = await supabase
+        .from("positions")
+        .insert({
+          name: s.positionName,
+          description: "",
+          role_a: "A",
+          role_b: "B",
+          sort_order: sortOrder,
+          created_by: userId,
+          is_official: false,
+          is_public: true,
+        })
+        .select()
+        .single();
+
+      if (error) {
+        warnings.push(`Failed to create position "${s.positionName}": ${error.message}`);
+        continue;
+      }
+
+      // Auto-enable all condition options for both roles
+      const { data: options } = await supabase.from("condition_options").select("id");
+      if (options && options.length > 0) {
+        const mappings = options.flatMap((o) =>
+          (["A", "B"] as const).map((role) => ({
+            position_id: data.id,
+            condition_option_id: o.id,
+            role,
+          })),
+        );
+        await supabase.from("position_conditions").insert(mappings);
+      }
+
+      positionsByName.set(s.positionName.toLowerCase(), data);
+      positionsCreated++;
+      pos = data;
     }
 
     const stateName = s.label || s.positionName;
@@ -478,6 +520,50 @@ export async function importNotation(input: string): Promise<ImportResult> {
         );
         if (!pos && matchedParsed) {
           pos = positionsByName.get(matchedParsed.positionName.toLowerCase());
+        }
+
+        // Auto-create position if it still doesn't exist
+        if (!pos) {
+          const posLabel = matchedParsed?.positionName ?? step.label;
+          const { data: maxRow } = await supabase
+            .from("positions")
+            .select("sort_order")
+            .order("sort_order", { ascending: false })
+            .limit(1)
+            .single();
+          const sortOrder = (maxRow?.sort_order ?? -1) + 1;
+
+          const { data, error } = await supabase
+            .from("positions")
+            .insert({
+              name: posLabel,
+              description: "",
+              role_a: "A",
+              role_b: "B",
+              sort_order: sortOrder,
+              created_by: userId,
+              is_official: false,
+              is_public: true,
+            })
+            .select()
+            .single();
+
+          if (!error && data) {
+            const { data: options } = await supabase.from("condition_options").select("id");
+            if (options && options.length > 0) {
+              const mappings = options.flatMap((o) =>
+                (["A", "B"] as const).map((role) => ({
+                  position_id: data.id,
+                  condition_option_id: o.id,
+                  role,
+                })),
+              );
+              await supabase.from("position_conditions").insert(mappings);
+            }
+            positionsByName.set(posLabel.toLowerCase(), data);
+            positionsCreated++;
+            pos = data;
+          }
         }
 
         const posName = pos?.name ?? step.label;
