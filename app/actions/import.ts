@@ -335,6 +335,7 @@ export async function importNotation(input: string): Promise<ImportResult> {
       pos = data;
     }
 
+    if (!pos) continue;
     const stateName = s.label || s.positionName;
     const stateKey = `${pos.id}:${stateName.toLowerCase()}`;
 
