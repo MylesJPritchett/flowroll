@@ -150,7 +150,7 @@ ${mediaInstructions}
 - When you see sub-positions or variants mentioned, ALWAYS create state definitions with the "as" syntax AND use the display name in flows`;
 
   const response = await client.messages.create({
-    model: "claude-sonnet-4-20250514",
+    model: "claude-sonnet-4-6",
     max_tokens: 8192,
     system: systemPrompt,
     messages: [
