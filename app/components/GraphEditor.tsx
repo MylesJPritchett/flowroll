@@ -15,6 +15,7 @@ import {
   type OnConnect,
   type NodeTypes,
   BackgroundVariant,
+  SelectionMode,
   useReactFlow,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
@@ -787,6 +788,115 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, flowGraphs
 
   const [selectedEdge, setSelectedEdge] = useState<{ id: string; pos: { x: number; y: number } } | null>(null);
 
+  // --- Multi-selection state ---
+  const [selectedNodes, setSelectedNodes] = useState<Node[]>([]);
+  const [selectedEdges, setSelectedEdges] = useState<Edge[]>([]);
+  const clipboardRef = useRef<{ nodes: Node[]; edges: Edge[] } | null>(null);
+  const hasMultiSelection = selectedNodes.length > 1 || (selectedNodes.length >= 1 && selectedEdges.length >= 1);
+
+  const onSelectionChange = useCallback(({ nodes: selNodes, edges: selEdges }: { nodes: Node[]; edges: Edge[] }) => {
+    setSelectedNodes(selNodes);
+    setSelectedEdges(selEdges);
+  }, []);
+
+  const deleteSelection = useCallback(() => {
+    if (selectedNodes.length === 0 && selectedEdges.length === 0) return;
+    const nodeIds = new Set(selectedNodes.map((n) => n.id));
+    const edgeIds = new Set(selectedEdges.map((e) => e.id));
+    setNodes((nds) => nds.filter((n) => !nodeIds.has(n.id)));
+    setEdges((eds) => eds.filter((e) => !edgeIds.has(e.id) && !nodeIds.has(e.source) && !nodeIds.has(e.target)));
+    setSelectedStateNode(null);
+    setSelectedActionNode(null);
+    setSelectedFinishNode(null);
+  }, [selectedNodes, selectedEdges, setNodes, setEdges]);
+
+  const copySelection = useCallback(() => {
+    if (selectedNodes.length === 0) return;
+    const nodeIds = new Set(selectedNodes.map((n) => n.id));
+    // Include edges that connect selected nodes to each other
+    const internalEdges = edges.filter((e) => nodeIds.has(e.source) && nodeIds.has(e.target));
+    clipboardRef.current = { nodes: [...selectedNodes], edges: internalEdges };
+  }, [selectedNodes, edges]);
+
+  const cutSelection = useCallback(() => {
+    copySelection();
+    deleteSelection();
+  }, [copySelection, deleteSelection]);
+
+  const pasteClipboard = useCallback(() => {
+    if (!clipboardRef.current || clipboardRef.current.nodes.length === 0) return;
+    const { nodes: clipNodes, edges: clipEdges } = clipboardRef.current;
+    const idMap = new Map<string, string>();
+    const offset = { x: 50, y: 50 };
+
+    const newNodes = clipNodes.map((n) => {
+      const newId = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      idMap.set(n.id, newId);
+      return { ...n, id: newId, position: { x: n.position.x + offset.x, y: n.position.y + offset.y }, selected: true };
+    });
+    const newEdges = clipEdges.map((e) => {
+      const newId = `e${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      return { ...e, id: newId, source: idMap.get(e.source) ?? e.source, target: idMap.get(e.target) ?? e.target, selected: true };
+    });
+
+    // Deselect existing, add new selected
+    setNodes((nds) => [...nds.map((n) => ({ ...n, selected: false })), ...newNodes]);
+    setEdges((eds) => [...eds.map((e) => ({ ...e, selected: false })), ...newEdges]);
+  }, [setNodes, setEdges]);
+
+  const convertToNewGraph = useCallback(async () => {
+    if (selectedNodes.length === 0 || !onCreateFlow) return;
+    const name = prompt("New flow name:");
+    if (!name?.trim()) return;
+    const nodeIds = new Set(selectedNodes.map((n) => n.id));
+    const internalEdges = edges.filter((e) => nodeIds.has(e.source) && nodeIds.has(e.target));
+    const graphNodes = fromRFNodes(selectedNodes);
+    const graphEdges = fromRFEdges(internalEdges);
+    const flowId = await onCreateFlow(name.trim());
+    if (flowId) {
+      onFlowChange?.(flowId, graphNodes, graphEdges);
+      onFlowSave?.(flowId, graphNodes, graphEdges);
+      setActiveFlowId(flowId);
+    }
+  }, [selectedNodes, edges, onCreateFlow, onFlowChange, onFlowSave]);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      // Don't capture when typing in inputs
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if ((e.target as HTMLElement)?.isContentEditable) return;
+
+      if (e.key === "Delete" || e.key === "Backspace") {
+        if (selectedNodes.length > 0 || selectedEdges.length > 0) {
+          e.preventDefault();
+          deleteSelection();
+        }
+      }
+      if (e.key === "c" && (e.ctrlKey || e.metaKey)) {
+        if (selectedNodes.length > 0) {
+          e.preventDefault();
+          copySelection();
+        }
+      }
+      if (e.key === "x" && (e.ctrlKey || e.metaKey)) {
+        if (selectedNodes.length > 0) {
+          e.preventDefault();
+          cutSelection();
+        }
+      }
+      if (e.key === "v" && (e.ctrlKey || e.metaKey)) {
+        if (clipboardRef.current) {
+          e.preventDefault();
+          pasteClipboard();
+        }
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [selectedNodes, selectedEdges, deleteSelection, copySelection, cutSelection, pasteClipboard]);
+
   const onEdgeClick = useCallback((e: React.MouseEvent, edge: Edge) => {
     setSelectedEdge({ id: edge.id, pos: clampEditorPos(e.clientX, e.clientY) });
     setSelectedStateNode(null);
@@ -935,7 +1045,11 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, flowGraphs
         onNodeDoubleClick={onNodeDoubleClick}
         onEdgeClick={onEdgeClick}
         onPaneClick={onPaneClick}
+        onSelectionChange={onSelectionChange}
         nodeTypes={nodeTypes}
+        selectionOnDrag
+        panOnDrag={[1, 2]}
+        selectionMode={SelectionMode.Partial}
         defaultEdgeOptions={{ selectable: true }}
         proOptions={{ hideAttribution: true }}
       >
@@ -1063,6 +1177,44 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, flowGraphs
           >
             Delete
           </button>
+        </div>
+      )}
+
+      {hasMultiSelection && (
+        <div className="absolute bottom-6 left-1/2 z-20 -translate-x-1/2 flex items-center gap-2 rounded-lg border border-zinc-600 bg-zinc-800/95 px-3 py-2 shadow-lg backdrop-blur-sm">
+          <span className="text-xs text-zinc-400 mr-1">
+            {selectedNodes.length} node{selectedNodes.length !== 1 ? "s" : ""}
+            {selectedEdges.length > 0 && `, ${selectedEdges.length} edge${selectedEdges.length !== 1 ? "s" : ""}`}
+          </span>
+          <button
+            onClick={copySelection}
+            className="rounded bg-zinc-700 px-2.5 py-1 text-xs font-medium text-zinc-200 transition-colors hover:bg-zinc-600"
+            title="Copy (Ctrl+C)"
+          >
+            Copy
+          </button>
+          <button
+            onClick={cutSelection}
+            className="rounded bg-zinc-700 px-2.5 py-1 text-xs font-medium text-zinc-200 transition-colors hover:bg-zinc-600"
+            title="Cut (Ctrl+X)"
+          >
+            Cut
+          </button>
+          <button
+            onClick={deleteSelection}
+            className="rounded bg-red-600 px-2.5 py-1 text-xs font-medium text-white transition-colors hover:bg-red-500"
+            title="Delete (Del)"
+          >
+            Delete
+          </button>
+          {onCreateFlow && (
+            <button
+              onClick={convertToNewGraph}
+              className="rounded bg-indigo-600 px-2.5 py-1 text-xs font-medium text-white transition-colors hover:bg-indigo-500"
+            >
+              New Graph
+            </button>
+          )}
         </div>
       )}
 
