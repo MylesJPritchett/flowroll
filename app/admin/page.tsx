@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { auth } from "@/auth";
 import { redirect } from "next/navigation";
 import { isAdmin } from "../actions/admin";
@@ -16,12 +17,12 @@ export default async function AdminPage() {
       <header className="flex items-center justify-between border-b border-zinc-800 px-4 py-2">
         <h1 className="text-lg font-bold text-zinc-50">Admin</h1>
         <div className="flex gap-2">
-          <a href="/database" className="rounded border border-zinc-700 px-3 py-1 text-xs text-zinc-400 hover:bg-zinc-800 transition-colors">
+          <Link href="/database" className="rounded border border-zinc-700 px-3 py-1 text-xs text-zinc-400 hover:bg-zinc-800 transition-colors">
             Database
-          </a>
-          <a href="/" className="rounded border border-zinc-700 px-3 py-1 text-xs text-zinc-400 hover:bg-zinc-800 transition-colors">
+          </Link>
+          <Link href="/" className="rounded border border-zinc-700 px-3 py-1 text-xs text-zinc-400 hover:bg-zinc-800 transition-colors">
             Back to Graph
-          </a>
+          </Link>
         </div>
       </header>
       <div className="flex-1 overflow-y-auto">
