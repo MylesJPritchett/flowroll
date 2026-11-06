@@ -135,6 +135,18 @@ flow: Butterfly Variant → Full Test Sweep → Mount`;
     expect(state!.position_id).toBe(position!.id);
   });
 
+  it("creates a position referenced only by a flow and warns once", async () => {
+    const input = `action: Flow Only Sweep
+flow: Flow Only New Pos → Flow Only Sweep → Flow Only New Pos`;
+    const result = await importNotation(input);
+    expect(result.positionsCreated).toBe(1);
+    expect(result.flowsCreated).toBe(1);
+    expect(result.warnings).toEqual([`Created new position "Flow Only New Pos"`]);
+
+    const { data: positions } = await db.from("positions").select("*").eq("name", "Flow Only New Pos");
+    expect(positions).toHaveLength(1);
+  });
+
   it("matches an existing position case-insensitively without warning", async () => {
     // "Closed Guard" is seeded
     const result = await importNotation(`state: closed guard as Case Match State`);
