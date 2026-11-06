@@ -123,8 +123,28 @@ flow: Butterfly Variant → Full Test Sweep → Mount`;
 
   it("warns on unknown position in state definition", async () => {
     const result = await importNotation(`state: Totally Nonexistent Position`);
-    expect(result.warnings.length).toBeGreaterThan(0);
-    expect(result.warnings[0]).toContain("Unknown position");
+    expect(result.positionsCreated).toBe(1);
+    expect(result.statesCreated).toBe(1);
+    expect(result.warnings).toEqual([`Created new position "Totally Nonexistent Position"`]);
+
+    const { data: position } = await db.from("positions").select("*").eq("name", "Totally Nonexistent Position").single();
+    expect(position).not.toBeNull();
+
+    const { data: state } = await db.from("states").select("*").eq("name", "Totally Nonexistent Position").single();
+    expect(state).not.toBeNull();
+    expect(state!.position_id).toBe(position!.id);
+  });
+
+  it("matches an existing position case-insensitively without warning", async () => {
+    // "Closed Guard" is seeded
+    const result = await importNotation(`state: closed guard as Case Match State`);
+    expect(result.positionsCreated).toBe(0);
+    expect(result.statesCreated).toBe(1);
+    expect(result.warnings).toHaveLength(0);
+
+    const { data: position } = await db.from("positions").select("*").eq("name", "Closed Guard").single();
+    const { data: state } = await db.from("states").select("*").eq("name", "Case Match State").single();
+    expect(state!.position_id).toBe(position!.id);
   });
 
   it("is idempotent for existing items", async () => {
