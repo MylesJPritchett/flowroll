@@ -36,8 +36,9 @@ export default function Workspace() {
   const initialized = useRef(false);
 
   const loadFlowGraphs = useCallback(() => {
-    fetchFlowGraphs().then((loaded) => {
-      setFlowGraphs(loaded);
+    fetchFlowGraphs().then(setFlowGraphs, (error) => {
+      // Keep the Flows already on screen, as the other loaders do on failure.
+      console.error("Failed to load flow graphs:", error);
     });
   }, []);
 
