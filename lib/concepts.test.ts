@@ -44,6 +44,7 @@ describe("getRoleLabels", () => {
       created_by: "test",
       is_official: true,
       is_public: true,
+      media: [],
     },
     {
       id: "2",
@@ -55,6 +56,7 @@ describe("getRoleLabels", () => {
       created_by: "test",
       is_official: true,
       is_public: true,
+      media: [],
     },
   ];
 
@@ -146,8 +148,8 @@ describe("getFilteredOptions", () => {
 describe("getAllowedOptionIds", () => {
   const taxonomy: Taxonomy = {
     positions: [
-      { id: "p1", name: "Mount", description: "", role_a: "Top", role_b: "Bottom", sort_order: 0, created_by: "t", is_official: true, is_public: true },
-      { id: "p2", name: "Guard", description: "", role_a: "A", role_b: "B", sort_order: 1, created_by: "t", is_official: true, is_public: true },
+      { id: "p1", name: "Mount", description: "", role_a: "Top", role_b: "Bottom", sort_order: 0, created_by: "t", is_official: true, is_public: true, media: [] },
+      { id: "p2", name: "Guard", description: "", role_a: "A", role_b: "B", sort_order: 1, created_by: "t", is_official: true, is_public: true, media: [] },
     ],
     conditionGroups: [],
     actions: [],
