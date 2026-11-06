@@ -121,7 +121,7 @@ flow: Butterfly Variant → Full Test Sweep → Mount`;
     expect(result.warnings).toHaveLength(0);
   });
 
-  it("warns on unknown position in state definition", async () => {
+  it("creates an unknown position from a state definition and warns", async () => {
     const result = await importNotation(`state: Totally Nonexistent Position`);
     expect(result.positionsCreated).toBe(1);
     expect(result.statesCreated).toBe(1);
