@@ -32,14 +32,6 @@ export default function ActionEditor({ data, taxonomy, roleLabels, onChange, onT
   const searchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    setActionId(data.action_id);
-    setActionName(data.action_name);
-    setActor(data.actor);
-    setMedia(data.media);
-    setSearch("");
-  }, [data]);
-
-  useEffect(() => {
     if (!actionId && searchRef.current) {
       searchRef.current.focus();
     }

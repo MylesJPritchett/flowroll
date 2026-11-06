@@ -42,19 +42,6 @@ export default function StateEditor({ data, taxonomy, focusTitle, onChange, onTa
   const [isCreating, setIsCreating] = useState(false);
   const conditionInputRef = useRef<HTMLInputElement>(null);
   const titleRef = useRef<HTMLInputElement>(null);
-  const idRef = useRef(data.position_name);
-
-  // Sync from parent when data identity changes
-  useEffect(() => {
-    setStateId(data.state_id);
-    setLabel(data.label);
-    setPositionName(data.position_name);
-    setConditions(data.conditions);
-    setGiNogi(data.giNogi);
-    setDescription(data.description);
-    setMedia(data.media);
-    idRef.current = data.position_name;
-  }, [data]);
 
   useEffect(() => {
     if (focusTitle && titleRef.current) {
@@ -92,10 +79,6 @@ export default function StateEditor({ data, taxonomy, focusTitle, onChange, onTa
     }
     setConditions(next);
     emit({ conditions: next });
-  };
-
-  const getActiveValue = (groupId: string, role: "A" | "B") => {
-    return conditions.find((c) => c.groupId === groupId && c.role === role)?.value;
   };
 
   const isDefault = positionName === "New State";

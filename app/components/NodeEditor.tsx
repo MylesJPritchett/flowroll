@@ -40,6 +40,7 @@ export default function NodeEditor({ node, taxonomy, focusTitle, position, onUpd
       </div>
 
       <StateEditor
+        key={node.id}
         data={stateData}
         taxonomy={taxonomy}
         focusTitle={focusTitle}
