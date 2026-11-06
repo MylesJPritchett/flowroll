@@ -530,7 +530,6 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, flowGraphs
   const [activeFlowId, setActiveFlowId] = useState<string | null>(null);
   const syncing = useRef(false);
 
-  // Pending suggestion state: when dragging from action → empty space
   const [pendingSuggestion, setPendingSuggestion] = useState<PendingSuggestion | null>(null);
 
   const [focusTitle, setFocusTitle] = useState(false);
