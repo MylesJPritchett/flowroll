@@ -22,6 +22,7 @@ describe("deserializeNodes", () => {
         action_id: "a1",
         action_name: "Scissor Sweep",
         actor: "B",
+        media: [],
         position_x: 100,
         position_y: 200,
       },
@@ -111,6 +112,7 @@ describe("deserializeNodes", () => {
         position_y: 200,
         conditions: [{ groupId: "g1", value: "Collar", role: "A" }],
         giNogi: "gi",
+        media: [],
       },
     ]);
   });
@@ -196,6 +198,7 @@ describe("serializeNode", () => {
       description: "Dominant position",
       conditions: [{ groupId: "g1", value: "Heavy", role: "A" }],
       giNogi: "nogi",
+      media: [],
       position_x: 100,
       position_y: 200,
     };
@@ -228,6 +231,7 @@ describe("serializeNode", () => {
       description: "",
       conditions: [],
       giNogi: "",
+      media: [],
       position_x: 0,
       position_y: 0,
     };
@@ -242,6 +246,7 @@ describe("serializeNode", () => {
       action_id: "a1",
       action_name: "Scissor Sweep",
       actor: "B",
+      media: [],
       position_x: 250,
       position_y: 100,
     };
@@ -318,6 +323,7 @@ describe("serialize/deserialize round-trip", () => {
       description: "Underhook deep",
       conditions: [{ groupId: "g1", value: "Underhook", role: "A" }],
       giNogi: "nogi",
+      media: [],
       position_x: 100,
       position_y: 200,
     };
@@ -333,6 +339,7 @@ describe("serialize/deserialize round-trip", () => {
       action_id: "a1",
       action_name: "Sweep",
       actor: "B",
+      media: [],
       position_x: 250,
       position_y: 100,
     };

@@ -12,6 +12,18 @@ type View = "list" | "graph" | "import";
 
 import type { Taxonomy } from "@/lib/concepts";
 
+async function fetchFlowGraphs(): Promise<FlowGraph[]> {
+  const graphs = await loadGraphs();
+  const loaded: FlowGraph[] = [];
+  for (const g of graphs) {
+    const data = await loadGraphById(g.id);
+    if (data) {
+      loaded.push({ id: g.id, name: data.graph.name, source: data.graph.source, nodes: data.nodes, edges: data.edges });
+    }
+  }
+  return loaded;
+}
+
 export default function Workspace() {
   const [nodes, setNodes] = useState<GraphNode[]>([]);
   const [edges, setEdges] = useState<GraphEdge[]>([]);
@@ -23,16 +35,11 @@ export default function Workspace() {
   const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const initialized = useRef(false);
 
-  const loadFlowGraphs = useCallback(async () => {
-    const graphs = await loadGraphs();
-    const loaded: FlowGraph[] = [];
-    for (const g of graphs) {
-      const data = await loadGraphById(g.id);
-      if (data) {
-        loaded.push({ id: g.id, name: data.graph.name, source: data.graph.source, nodes: data.nodes, edges: data.edges });
-      }
-    }
-    setFlowGraphs(loaded);
+  const loadFlowGraphs = useCallback(() => {
+    fetchFlowGraphs().then(setFlowGraphs, (error) => {
+      // Keep the Flows already on screen, as the other loaders do on failure.
+      console.error("Failed to load flow graphs:", error);
+    });
   }, []);
 
   useEffect(() => {

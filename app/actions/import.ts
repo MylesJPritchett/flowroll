@@ -332,6 +332,7 @@ export async function importNotation(input: string): Promise<ImportResult> {
 
       positionsByName.set(s.positionName.toLowerCase(), data);
       positionsCreated++;
+      warnings.push(`Created new position "${s.positionName}"`);
       pos = data;
     }
 
@@ -563,6 +564,7 @@ export async function importNotation(input: string): Promise<ImportResult> {
             }
             positionsByName.set(posLabel.toLowerCase(), data);
             positionsCreated++;
+            warnings.push(`Created new position "${posLabel}"`);
             pos = data;
           }
         }

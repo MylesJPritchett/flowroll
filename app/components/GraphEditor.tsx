@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -24,7 +24,7 @@ import ActionNode from "./ActionNode";
 import FinishNode from "./FinishNode";
 import NodeEditor from "./NodeEditor";
 import ActionNodeEditor from "./ActionNodeEditor";
-import type { GraphNode, GraphEdge, GraphStateNode, GraphActionNode, GraphFinishNode, GiNogi, MediaItem, GraphSource } from "@/lib/graph";
+import type { GraphNode, GraphEdge, GraphStateNode, GraphActionNode, GiNogi, MediaItem, GraphSource } from "@/lib/graph";
 import { getRoleLabels, resolveConditionRole, computeActionEffects } from "@/lib/concepts";
 import type { StateCondition, Taxonomy } from "@/lib/concepts";
 
@@ -380,6 +380,16 @@ function buildEdge(id: string, source: string, target: string, actor: "A" | "B",
   } as Edge;
 }
 
+// Pending suggestion: when dragging from an action to empty space
+interface PendingSuggestion {
+  actionNodeId: string;
+  actor: "A" | "B";
+  flowPosition: { x: number; y: number };
+  expectedName: string;
+  expectedConditions: StateCondition[];
+  expectedGiNogi: GiNogi;
+}
+
 // --- Props ---
 
 export interface FlowGraph {
@@ -468,9 +478,8 @@ function NewFlowButton({ onCreate }: { onCreate: (name: string) => Promise<void>
   );
 }
 
-function InsertIntoButton({ flowNodes, flowEdges, flowGraphs, onInsert }: {
+function InsertIntoButton({ flowNodes, flowGraphs, onInsert }: {
   flowNodes: GraphNode[];
-  flowEdges: GraphEdge[];
   flowGraphs: FlowGraph[];
   onInsert: (targetFlowId: string | null) => void;
 }) {
@@ -517,9 +526,38 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, flowGraphs
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedStateNode, setSelectedStateNode] = useState<Node | null>(null);
   const [selectedActionNode, setSelectedActionNode] = useState<Node | null>(null);
+  // Edit the live node so changes made elsewhere (e.g. Action effects) reach the open editor
+  const editingStateNode = selectedStateNode
+    ? nodes.find((n) => n.id === selectedStateNode.id) ?? selectedStateNode
+    : null;
   const [selectedFinishNode, setSelectedFinishNode] = useState<Node | null>(null);
   const [activeFlowId, setActiveFlowId] = useState<string | null>(null);
   const syncing = useRef(false);
+
+  const [pendingSuggestion, setPendingSuggestion] = useState<PendingSuggestion | null>(null);
+
+  const [focusTitle, setFocusTitle] = useState(false);
+  const [editorPos, setEditorPos] = useState({ x: 0, y: 0 });
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const clampEditorPos = useCallback((clientX: number, clientY: number) => {
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return { x: 0, y: 0 };
+    const editorW = 320;
+    const editorH = 550;
+    const pad = 12;
+    let x = clientX - rect.left + 16;
+    let y = clientY - rect.top - 20;
+    if (x + editorW + pad > rect.width) x = clientX - rect.left - editorW - 16;
+    if (y + editorH + pad > rect.height) y = rect.height - editorH - pad;
+    return { x: Math.max(pad, x), y: Math.max(pad, y) };
+  }, []);
+
+  const getRelativePos = useCallback((e: React.MouseEvent) => {
+    return clampEditorPos(e.clientX, e.clientY);
+  }, [clampEditorPos]);
+
+  const justCreatedNode = useRef(false);
 
   const mergeFlow = flowGraphs.find((f) => f.source === "merge");
   const isViewingFlow = activeFlowId !== null;
@@ -530,10 +568,15 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, flowGraphs
   const displayNodes = activeFlow ? activeFlow.nodes : dbNodes;
   const displayEdges = activeFlow ? activeFlow.edges : dbEdges;
 
+  // Reads the latest taxonomy without making a taxonomy change re-sync the graph
+  const buildRFNodes = useEffectEvent((graphNodes: GraphNode[], graphEdges: GraphEdge[]) =>
+    toRFNodes(graphNodes, graphEdges, taxonomy),
+  );
+
   // Sync from parent → local RF state
   useEffect(() => {
     syncing.current = true;
-    setNodes(toRFNodes(displayNodes, displayEdges, taxonomy));
+    setNodes(buildRFNodes(displayNodes, displayEdges));
     setEdges(toRFEdges(displayEdges));
     setTimeout(() => {
       syncing.current = false;
@@ -625,40 +668,6 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, flowGraphs
     },
     [setEdges, setNodes, nodes, applyActionEffects],
   );
-
-  // Pending suggestion state: when dragging from action → empty space
-  interface PendingSuggestion {
-    actionNodeId: string;
-    actor: "A" | "B";
-    flowPosition: { x: number; y: number };
-    expectedName: string;
-    expectedConditions: StateCondition[];
-    expectedGiNogi: GiNogi;
-  }
-  const [pendingSuggestion, setPendingSuggestion] = useState<PendingSuggestion | null>(null);
-
-  const [focusTitle, setFocusTitle] = useState(false);
-  const [editorPos, setEditorPos] = useState({ x: 0, y: 0 });
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  const clampEditorPos = useCallback((clientX: number, clientY: number) => {
-    const rect = containerRef.current?.getBoundingClientRect();
-    if (!rect) return { x: 0, y: 0 };
-    const editorW = 320;
-    const editorH = 550;
-    const pad = 12;
-    let x = clientX - rect.left + 16;
-    let y = clientY - rect.top - 20;
-    if (x + editorW + pad > rect.width) x = clientX - rect.left - editorW - 16;
-    if (y + editorH + pad > rect.height) y = rect.height - editorH - pad;
-    return { x: Math.max(pad, x), y: Math.max(pad, y) };
-  }, []);
-
-  const getRelativePos = useCallback((e: React.MouseEvent) => {
-    return clampEditorPos(e.clientX, e.clientY);
-  }, [clampEditorPos]);
-
-  const justCreatedNode = useRef(false);
 
   // When dragging from a state to empty space → create action node
   // When dragging from an action to empty space → suggest/create state
@@ -1108,7 +1117,6 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, flowGraphs
         {isViewingFlow && activeFlow && onInsertFlow && (
           <InsertIntoButton
             flowNodes={activeFlow.nodes}
-            flowEdges={activeFlow.edges}
             flowGraphs={flowGraphs.filter((f) => f.id !== resolvedFlowId && f.source !== "merge")}
             onInsert={(targetId) => {
               onInsertFlow(activeFlow.nodes, activeFlow.edges, targetId);
@@ -1129,9 +1137,9 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, flowGraphs
         )}
       </div>
 
-      {selectedStateNode && (
+      {editingStateNode && (
         <NodeEditor
-          node={selectedStateNode}
+          node={editingStateNode}
           taxonomy={taxonomy}
           focusTitle={focusTitle}
           position={editorPos}

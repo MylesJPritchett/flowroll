@@ -73,6 +73,7 @@ describe("saveFlowGraph + loadGraphById round-trip", () => {
         conditions: [],
         giNogi: "",
         description: "",
+        media: [],
         position_x: 100,
         position_y: 200,
       },
@@ -82,6 +83,7 @@ describe("saveFlowGraph + loadGraphById round-trip", () => {
         action_id: "",
         action_name: "Scissor Sweep",
         actor: "A",
+        media: [],
         position_x: 350,
         position_y: 200,
       },
@@ -134,9 +136,9 @@ describe("saveFlowGraph + loadGraphById round-trip", () => {
 
     // Save 3 nodes
     await saveFlowGraph(graphId, [
-      { id: uid("n"), type: "state", state_id: "", label: "", position_name: "Guard", conditions: [], giNogi: "", description: "", position_x: 0, position_y: 0 },
-      { id: uid("n"), type: "state", state_id: "", label: "", position_name: "Mount", conditions: [], giNogi: "", description: "", position_x: 0, position_y: 0 },
-      { id: uid("n"), type: "state", state_id: "", label: "", position_name: "Back", conditions: [], giNogi: "", description: "", position_x: 0, position_y: 0 },
+      { id: uid("n"), type: "state", state_id: "", label: "", position_name: "Guard", conditions: [], giNogi: "", description: "", media: [], position_x: 0, position_y: 0 },
+      { id: uid("n"), type: "state", state_id: "", label: "", position_name: "Mount", conditions: [], giNogi: "", description: "", media: [], position_x: 0, position_y: 0 },
+      { id: uid("n"), type: "state", state_id: "", label: "", position_name: "Back", conditions: [], giNogi: "", description: "", media: [], position_x: 0, position_y: 0 },
     ], []);
 
     // Re-save with 1 node

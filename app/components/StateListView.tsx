@@ -84,6 +84,7 @@ function StateRow({ node, taxonomy, onUpdate, onDelete, onTaxonomyChange }: { no
       {expanded && (
         <div className="px-4 pb-4 pt-1 bg-zinc-900/50">
           <StateEditor
+            key={node.id}
             data={{
               state_id: node.state_id,
               label: node.label,
@@ -136,6 +137,7 @@ function ActionRow({ node, taxonomy, onUpdate, onDelete, onTaxonomyChange }: { n
       {expanded && (
         <div className="px-4 pb-4 pt-1 bg-zinc-900/50">
           <ActionEditor
+            key={node.id}
             data={{
               action_id: node.action_id,
               action_name: node.action_name,

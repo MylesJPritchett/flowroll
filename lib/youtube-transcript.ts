@@ -27,13 +27,6 @@ function extractYouTubeId(url: string): string | null {
   return null;
 }
 
-// Find the Python binary with youtube-transcript-api installed
-function findPython(): string {
-  const venvPython = "/tmp/yt-venv/bin/python3";
-  if (existsSync(venvPython)) return venvPython;
-  return "python3";
-}
-
 async function ensureVenv(): Promise<string> {
   const venvPython = "/tmp/yt-venv/bin/python3";
   if (existsSync(venvPython)) {

@@ -73,6 +73,7 @@ position: Side Control (Top / Bottom)`;
         forbids: [],
         adds: [],
         removes: [],
+        media: [],
       },
     ]);
   });
@@ -116,7 +117,7 @@ position: Side Control (Top / Bottom)`;
   it("parses a basic state", () => {
     const result = parseNotation("state: Closed Guard");
     expect(result.states).toEqual([
-      { label: "", positionName: "Closed Guard", roleA: [], roleB: [], giNogi: "", description: "" },
+      { label: "", positionName: "Closed Guard", roleA: [], roleB: [], giNogi: "", description: "", media: [] },
     ]);
   });
 
