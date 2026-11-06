@@ -380,6 +380,16 @@ function buildEdge(id: string, source: string, target: string, actor: "A" | "B",
   } as Edge;
 }
 
+// Pending suggestion: when dragging from an action to empty space
+interface PendingSuggestion {
+  actionNodeId: string;
+  actor: "A" | "B";
+  flowPosition: { x: number; y: number };
+  expectedName: string;
+  expectedConditions: StateCondition[];
+  expectedGiNogi: GiNogi;
+}
+
 // --- Props ---
 
 export interface FlowGraph {
@@ -521,6 +531,33 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, flowGraphs
   const [activeFlowId, setActiveFlowId] = useState<string | null>(null);
   const syncing = useRef(false);
 
+  // Pending suggestion state: when dragging from action → empty space
+  const [pendingSuggestion, setPendingSuggestion] = useState<PendingSuggestion | null>(null);
+
+  const [focusTitle, setFocusTitle] = useState(false);
+  const [editorPos, setEditorPos] = useState({ x: 0, y: 0 });
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const clampEditorPos = useCallback((clientX: number, clientY: number) => {
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return { x: 0, y: 0 };
+    const editorW = 320;
+    const editorH = 550;
+    const pad = 12;
+    let x = clientX - rect.left + 16;
+    let y = clientY - rect.top - 20;
+    if (x + editorW + pad > rect.width) x = clientX - rect.left - editorW - 16;
+    if (y + editorH + pad > rect.height) y = rect.height - editorH - pad;
+    return { x: Math.max(pad, x), y: Math.max(pad, y) };
+  }, []);
+
+  const getRelativePos = useCallback((e: React.MouseEvent) => {
+    return clampEditorPos(e.clientX, e.clientY);
+  }, [clampEditorPos]);
+
+  const justCreatedNode = useRef(false);
+
+
   const mergeFlow = flowGraphs.find((f) => f.source === "merge");
   const isViewingFlow = activeFlowId !== null;
 
@@ -625,40 +662,6 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, flowGraphs
     },
     [setEdges, setNodes, nodes, applyActionEffects],
   );
-
-  // Pending suggestion state: when dragging from action → empty space
-  interface PendingSuggestion {
-    actionNodeId: string;
-    actor: "A" | "B";
-    flowPosition: { x: number; y: number };
-    expectedName: string;
-    expectedConditions: StateCondition[];
-    expectedGiNogi: GiNogi;
-  }
-  const [pendingSuggestion, setPendingSuggestion] = useState<PendingSuggestion | null>(null);
-
-  const [focusTitle, setFocusTitle] = useState(false);
-  const [editorPos, setEditorPos] = useState({ x: 0, y: 0 });
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  const clampEditorPos = useCallback((clientX: number, clientY: number) => {
-    const rect = containerRef.current?.getBoundingClientRect();
-    if (!rect) return { x: 0, y: 0 };
-    const editorW = 320;
-    const editorH = 550;
-    const pad = 12;
-    let x = clientX - rect.left + 16;
-    let y = clientY - rect.top - 20;
-    if (x + editorW + pad > rect.width) x = clientX - rect.left - editorW - 16;
-    if (y + editorH + pad > rect.height) y = rect.height - editorH - pad;
-    return { x: Math.max(pad, x), y: Math.max(pad, y) };
-  }, []);
-
-  const getRelativePos = useCallback((e: React.MouseEvent) => {
-    return clampEditorPos(e.clientX, e.clientY);
-  }, [clampEditorPos]);
-
-  const justCreatedNode = useRef(false);
 
   // When dragging from a state to empty space → create action node
   // When dragging from an action to empty space → suggest/create state
