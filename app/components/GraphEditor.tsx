@@ -526,6 +526,10 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, flowGraphs
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedStateNode, setSelectedStateNode] = useState<Node | null>(null);
   const [selectedActionNode, setSelectedActionNode] = useState<Node | null>(null);
+  // Edit the live node so changes made elsewhere (e.g. Action effects) reach the open editor
+  const editingStateNode = selectedStateNode
+    ? nodes.find((n) => n.id === selectedStateNode.id) ?? selectedStateNode
+    : null;
   const [selectedFinishNode, setSelectedFinishNode] = useState<Node | null>(null);
   const [activeFlowId, setActiveFlowId] = useState<string | null>(null);
   const syncing = useRef(false);
@@ -1133,9 +1137,9 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, flowGraphs
         )}
       </div>
 
-      {selectedStateNode && (
+      {editingStateNode && (
         <NodeEditor
-          node={selectedStateNode}
+          node={editingStateNode}
           taxonomy={taxonomy}
           focusTitle={focusTitle}
           position={editorPos}
