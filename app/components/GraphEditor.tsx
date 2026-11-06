@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -24,7 +24,7 @@ import ActionNode from "./ActionNode";
 import FinishNode from "./FinishNode";
 import NodeEditor from "./NodeEditor";
 import ActionNodeEditor from "./ActionNodeEditor";
-import type { GraphNode, GraphEdge, GraphStateNode, GraphActionNode, GraphFinishNode, GiNogi, MediaItem, GraphSource } from "@/lib/graph";
+import type { GraphNode, GraphEdge, GraphStateNode, GraphActionNode, GiNogi, MediaItem, GraphSource } from "@/lib/graph";
 import { getRoleLabels, resolveConditionRole, computeActionEffects } from "@/lib/concepts";
 import type { StateCondition, Taxonomy } from "@/lib/concepts";
 
@@ -478,9 +478,8 @@ function NewFlowButton({ onCreate }: { onCreate: (name: string) => Promise<void>
   );
 }
 
-function InsertIntoButton({ flowNodes, flowEdges, flowGraphs, onInsert }: {
+function InsertIntoButton({ flowNodes, flowGraphs, onInsert }: {
   flowNodes: GraphNode[];
-  flowEdges: GraphEdge[];
   flowGraphs: FlowGraph[];
   onInsert: (targetFlowId: string | null) => void;
 }) {
@@ -557,7 +556,6 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, flowGraphs
 
   const justCreatedNode = useRef(false);
 
-
   const mergeFlow = flowGraphs.find((f) => f.source === "merge");
   const isViewingFlow = activeFlowId !== null;
 
@@ -567,10 +565,15 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, flowGraphs
   const displayNodes = activeFlow ? activeFlow.nodes : dbNodes;
   const displayEdges = activeFlow ? activeFlow.edges : dbEdges;
 
+  // Reads the latest taxonomy without making a taxonomy change re-sync the graph
+  const buildRFNodes = useEffectEvent((graphNodes: GraphNode[], graphEdges: GraphEdge[]) =>
+    toRFNodes(graphNodes, graphEdges, taxonomy),
+  );
+
   // Sync from parent → local RF state
   useEffect(() => {
     syncing.current = true;
-    setNodes(toRFNodes(displayNodes, displayEdges, taxonomy));
+    setNodes(buildRFNodes(displayNodes, displayEdges));
     setEdges(toRFEdges(displayEdges));
     setTimeout(() => {
       syncing.current = false;
@@ -1111,7 +1114,6 @@ function GraphEditorInner({ nodes: dbNodes, edges: dbEdges, taxonomy, flowGraphs
         {isViewingFlow && activeFlow && onInsertFlow && (
           <InsertIntoButton
             flowNodes={activeFlow.nodes}
-            flowEdges={activeFlow.edges}
             flowGraphs={flowGraphs.filter((f) => f.id !== resolvedFlowId && f.source !== "merge")}
             onInsert={(targetId) => {
               onInsertFlow(activeFlow.nodes, activeFlow.edges, targetId);
