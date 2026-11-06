@@ -37,6 +37,7 @@ export default function ActionNodeEditor({ node, taxonomy, roleLabels, position,
       </div>
 
       <ActionEditor
+        key={node.id}
         data={actionData}
         taxonomy={taxonomy}
         roleLabels={roleLabels}
