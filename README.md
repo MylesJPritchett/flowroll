@@ -69,4 +69,6 @@ pnpm test:integration   # server actions against local Supabase (needs `supabase
 pnpm check              # tsc --noEmit + next build
 ```
 
+`pnpm test:integration` needs local Supabase running with every migration applied. After pulling new migrations, run `supabase db reset` before the integration tests.
+
 Integration tests stub NextAuth with a fake user and delete everything that user created between tests.

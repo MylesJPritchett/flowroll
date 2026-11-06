@@ -25,6 +25,16 @@ interface StateEditorProps {
   onTaxonomyChange?: () => void;
 }
 
+function sameStateData(a: StateData, b: StateData): boolean {
+  return a.state_id === b.state_id
+    && a.label === b.label
+    && a.position_name === b.position_name
+    && a.giNogi === b.giNogi
+    && a.description === b.description
+    && JSON.stringify(a.conditions) === JSON.stringify(b.conditions)
+    && JSON.stringify(a.media) === JSON.stringify(b.media);
+}
+
 export default function StateEditor({ data, taxonomy, focusTitle, onChange, onTaxonomyChange }: StateEditorProps) {
   const [stateId, setStateId] = useState(data.state_id);
   const [label, setLabel] = useState(data.label);
@@ -42,6 +52,21 @@ export default function StateEditor({ data, taxonomy, focusTitle, onChange, onTa
   const [isCreating, setIsCreating] = useState(false);
   const conditionInputRef = useRef<HTMLInputElement>(null);
   const titleRef = useRef<HTMLInputElement>(null);
+
+  // Adopt changes made to this node outside the editor (e.g. an Action's effects
+  // rewriting its Conditions). Compared by value: callers may pass a fresh object
+  // every render, and our own edits come back equal to the local state.
+  const [syncedData, setSyncedData] = useState(data);
+  if (!sameStateData(syncedData, data)) {
+    setSyncedData(data);
+    setStateId(data.state_id);
+    setLabel(data.label);
+    setPositionName(data.position_name);
+    setConditions(data.conditions);
+    setGiNogi(data.giNogi);
+    setDescription(data.description);
+    setMedia(data.media);
+  }
 
   useEffect(() => {
     if (focusTitle && titleRef.current) {
